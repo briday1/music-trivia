@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import random
 import re
+import os
 from typing import List, Tuple, Dict, Set, Optional
 import itertools
 from io import BytesIO
@@ -35,20 +36,79 @@ def extract_playlist_id(url: str) -> str:
     return url.strip()
 
 def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret: str = None) -> List[str]:
-    """Fetch track names from a Spotify playlist."""
+    """Fetch track names from a Spotify playlist.
+    
+    This function uses a hybrid approach:
+    1. First tries SpotAPI (no credentials needed) for public playlists
+    2. Falls back to Spotipy with Client Credentials if SpotAPI fails or credentials are provided
+    
+    Args:
+        playlist_url: Spotify playlist URL or ID
+        client_id: Optional client ID (overrides environment variable)
+        client_secret: Optional client secret (overrides environment variable)
+    
+    Returns:
+        List of track names from the playlist
+    """
     try:
         playlist_id = extract_playlist_id(playlist_url)
         
-        # Spotify API requires authentication even for public playlists
-        if not client_id or not client_secret:
-            st.error("Spotify API credentials are required to access playlists. Please provide your Client ID and Client Secret in the sidebar.")
-            st.info("Get your credentials at: https://developer.spotify.com/dashboard")
+        # Try to get credentials from parameters first, then fall back to environment variables
+        final_client_id = client_id or os.environ.get('SPOTIPY_CLIENT_ID')
+        final_client_secret = client_secret or os.environ.get('SPOTIPY_CLIENT_SECRET')
+        
+        # Try SpotAPI first (no credentials needed) if credentials are not provided
+        if not final_client_id or not final_client_secret:
+            try:
+                from spotapi import PublicPlaylist
+                
+                st.info("Attempting to fetch playlist without credentials using SpotAPI...")
+                playlist = PublicPlaylist(playlist_id)
+                result = playlist.get_playlist_info()
+                
+                # Extract track names from SpotAPI response
+                track_names = []
+                tracks = result.get('tracks', {}).get('items', [])
+                for item in tracks:
+                    track = item.get('track', {})
+                    if track and track.get('name'):
+                        track_names.append(track['name'])
+                
+                # Handle pagination if needed
+                total_tracks = result.get('tracks', {}).get('total', len(track_names))
+                if len(track_names) < total_tracks:
+                    # Use pagination to get remaining tracks
+                    for page_data in playlist.paginate_playlist():
+                        for item in page_data.get('items', []):
+                            track = item.get('track', {})
+                            if track and track.get('name'):
+                                track_names.append(track['name'])
+                
+                if track_names:
+                    st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
+                    return track_names
+                    
+            except Exception as spotapi_error:
+                st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
+        
+        # Fall back to Spotipy with credentials
+        if not final_client_id or not final_client_secret:
+            st.error("Spotify API credentials are required to access this playlist.")
+            st.info("""
+            **Option 1 (Recommended for app owners):** Set environment variables:
+            - `SPOTIPY_CLIENT_ID`
+            - `SPOTIPY_CLIENT_SECRET`
+            
+            **Option 2:** Provide credentials in the sidebar below.
+            
+            Get free credentials at: https://developer.spotify.com/dashboard
+            """)
             return []
         
-        # Use credentials to authenticate
+        # Use Spotipy with credentials
         auth_manager = SpotifyClientCredentials(
-            client_id=client_id,
-            client_secret=client_secret
+            client_id=final_client_id,
+            client_secret=final_client_secret
         )
         sp = spotipy.Spotify(auth_manager=auth_manager)
         
@@ -415,10 +475,15 @@ def main():
     # Sidebar for configuration
     st.sidebar.header("Configuration")
     
-    # Spotify credentials (required)
-    with st.sidebar.expander("Spotify API Credentials (Required)", expanded=True):
-        st.warning("⚠️ Spotify API credentials are **required** to access playlists, even public ones.")
-        st.info("Get free credentials at: https://developer.spotify.com/dashboard")
+    # Spotify credentials (optional but recommended)
+    with st.sidebar.expander("Spotify API Credentials (Optional)", expanded=False):
+        st.info("""
+        **No credentials?** The app will try to fetch playlists without them first.
+        
+        **Have credentials?** Provide them for more reliable access and higher rate limits.
+        
+        Get free credentials at: https://developer.spotify.com/dashboard
+        """)
         client_id = st.text_input("Client ID", type="password")
         client_secret = st.text_input("Client Secret", type="password")
     
