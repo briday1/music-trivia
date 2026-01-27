@@ -39,16 +39,18 @@ def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret:
     try:
         playlist_id = extract_playlist_id(playlist_url)
         
-        if client_id and client_secret:
-            # Use credentials if provided
-            auth_manager = SpotifyClientCredentials(
-                client_id=client_id,
-                client_secret=client_secret
-            )
-            sp = spotipy.Spotify(auth_manager=auth_manager)
-        else:
-            # Use without authentication (limited functionality)
-            sp = spotipy.Spotify()
+        # Spotify API requires authentication even for public playlists
+        if not client_id or not client_secret:
+            st.error("Spotify API credentials are required to access playlists. Please provide your Client ID and Client Secret in the sidebar.")
+            st.info("Get your credentials at: https://developer.spotify.com/dashboard")
+            return []
+        
+        # Use credentials to authenticate
+        auth_manager = SpotifyClientCredentials(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        sp = spotipy.Spotify(auth_manager=auth_manager)
         
         # Get playlist tracks
         results = sp.playlist_tracks(playlist_id)
@@ -408,9 +410,10 @@ def main():
     # Sidebar for configuration
     st.sidebar.header("Configuration")
     
-    # Spotify credentials (optional)
-    with st.sidebar.expander("Spotify API Credentials (Optional)", expanded=False):
-        st.info("You can provide Spotify API credentials for better reliability. Get them at https://developer.spotify.com/")
+    # Spotify credentials (required)
+    with st.sidebar.expander("Spotify API Credentials (Required)", expanded=True):
+        st.warning("⚠️ Spotify API credentials are **required** to access playlists, even public ones.")
+        st.info("Get free credentials at: https://developer.spotify.com/dashboard")
         client_id = st.text_input("Client ID", type="password")
         client_secret = st.text_input("Client Secret", type="password")
     

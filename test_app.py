@@ -42,8 +42,8 @@ def test_bingo_card_generation():
     assert len(card) == 5, f"Card should have 5 rows, got {len(card)}"
     assert all(len(row) == 5 for row in card), "All rows should have 5 columns"
     
-    # Check all songs are from the original list
-    all_card_songs = [song for row in card for song in row]
+    # Check all songs are from the original list (excluding FREE SPACE)
+    all_card_songs = [song for row in card for song in row if song != "FREE SPACE"]
     assert all(song in songs for song in all_card_songs), "Card contains invalid songs"
     
     print("✓ Bingo card generation working correctly")

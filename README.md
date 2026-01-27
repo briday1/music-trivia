@@ -55,13 +55,16 @@ The app will open in your default web browser at `http://localhost:8501`
 
 5. **Print**: Use your browser's print function (Ctrl+P / Cmd+P) to print cards
 
-### Optional: Spotify API Credentials
+### Spotify API Credentials (Required)
 
-For better reliability and higher rate limits, you can provide Spotify API credentials:
+To use this app, you need Spotify API credentials:
 
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app and get your Client ID and Client Secret
-3. Enter them in the app's sidebar under "Spotify API Credentials"
+2. Create an app (or use an existing one)
+3. Get your Client ID and Client Secret
+4. Enter them in the app's sidebar under "Spotify API Credentials"
+
+**Note:** Spotify API credentials are required to access playlists, even public ones. This is a Spotify API requirement.
 
 ## Examples
 
