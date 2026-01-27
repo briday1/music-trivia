@@ -118,25 +118,30 @@ def check_bingo_win(card: List[List[str]], called_songs: Set[str]) -> Tuple[bool
     """
     Check if a card has a bingo (row, column, or diagonal).
     Returns (has_won, win_type)
+    FREE SPACE is automatically considered as called/matched.
     """
     card_size = len(card)
     
+    # Helper function to check if a song is called (FREE SPACE is always considered called)
+    def is_called(song: str) -> bool:
+        return song == "FREE SPACE" or song in called_songs
+    
     # Check rows
     for i, row in enumerate(card):
-        if all(song in called_songs for song in row):
+        if all(is_called(song) for song in row):
             return True, f"Row {i+1}"
     
     # Check columns
     for col in range(card_size):
-        if all(card[row][col] in called_songs for row in range(card_size)):
+        if all(is_called(card[row][col]) for row in range(card_size)):
             return True, f"Column {col+1}"
     
     # Check diagonal (top-left to bottom-right)
-    if all(card[i][i] in called_songs for i in range(card_size)):
+    if all(is_called(card[i][i]) for i in range(card_size)):
         return True, "Diagonal (TL-BR)"
     
     # Check diagonal (top-right to bottom-left)
-    if all(card[i][card_size - 1 - i] in called_songs for i in range(card_size)):
+    if all(is_called(card[i][card_size - 1 - i]) for i in range(card_size)):
         return True, "Diagonal (TR-BL)"
     
     return False, ""
