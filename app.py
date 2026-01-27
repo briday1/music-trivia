@@ -5,8 +5,16 @@ import pandas as pd
 import numpy as np
 import random
 import re
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Optional
 import itertools
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+from reportlab.lib import colors
+from PIL import Image as PILImage
 
 st.set_page_config(page_title="Spotify Bingo Game", layout="wide")
 
@@ -63,33 +71,44 @@ def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret:
         st.error(f"Error fetching playlist: {str(e)}")
         return []
 
-def create_bingo_card(songs: List[str], card_size: int = 5) -> List[List[str]]:
-    """Create a single bingo card with random songs."""
-    # We need card_size * card_size songs for the bingo card
+def create_bingo_card(songs: List[str], card_size: int = 5, free_space: bool = True) -> List[List[str]]:
+    """Create a single bingo card with random songs and optional free space in center."""
+    # We need card_size * card_size songs for the bingo card (minus 1 if free space)
     num_squares = card_size * card_size
+    num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    if len(songs) < num_squares:
-        st.warning(f"Not enough songs ({len(songs)}) for {card_size}x{card_size} card. Need at least {num_squares} songs.")
+    if len(songs) < num_songs_needed:
+        st.warning(f"Not enough songs ({len(songs)}) for {card_size}x{card_size} card. Need at least {num_songs_needed} songs.")
         # Pad with duplicates if needed
-        while len(songs) < num_squares:
-            songs.extend(songs[:num_squares - len(songs)])
+        while len(songs) < num_songs_needed:
+            songs.extend(songs[:num_songs_needed - len(songs)])
     
     # Randomly select songs for this card
-    selected_songs = random.sample(songs, num_squares)
+    selected_songs = random.sample(songs, num_songs_needed)
     
     # Create 2D grid
     card = []
+    song_idx = 0
+    center = card_size // 2
+    
     for i in range(card_size):
-        row = selected_songs[i * card_size:(i + 1) * card_size]
+        row = []
+        for j in range(card_size):
+            # Add free space in center for odd-sized cards
+            if free_space and card_size % 2 == 1 and i == center and j == center:
+                row.append("FREE SPACE")
+            else:
+                row.append(selected_songs[song_idx])
+                song_idx += 1
         card.append(row)
     
     return card
 
-def generate_unique_bingo_cards(songs: List[str], num_cards: int, card_size: int = 5) -> List[List[List[str]]]:
+def generate_unique_bingo_cards(songs: List[str], num_cards: int, card_size: int = 5, free_space: bool = True) -> List[List[List[str]]]:
     """Generate multiple unique bingo cards."""
     cards = []
     for _ in range(num_cards):
-        card = create_bingo_card(songs, card_size)
+        card = create_bingo_card(songs, card_size, free_space)
         cards.append(card)
     return cards
 
@@ -201,6 +220,187 @@ def format_bingo_card_html(card: List[List[str]], card_index: int) -> str:
     html += '</table></div>'
     return html
 
+def generate_bingo_pdf(
+    cards: List[List[List[str]]], 
+    results_df: pd.DataFrame,
+    title: Optional[str] = None,
+    logo_image: Optional[BytesIO] = None,
+    logo_zoom: float = 1.0
+) -> BytesIO:
+    """
+    Generate a PDF with all bingo cards and operator reference sheet.
+    
+    Args:
+        cards: List of bingo cards
+        results_df: DataFrame with win analysis
+        title: Optional title to display on top of each card
+        logo_image: Optional logo image for free space (BytesIO)
+        logo_zoom: Zoom factor for logo (default 1.0)
+    
+    Returns:
+        BytesIO object containing the PDF
+    """
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading2'],
+        alignment=TA_CENTER,
+        spaceAfter=12
+    )
+    index_style = ParagraphStyle(
+        'CardIndex',
+        parent=styles['Normal'],
+        alignment=TA_RIGHT,
+        fontSize=8,
+        textColor=colors.grey
+    )
+    
+    # Generate each bingo card
+    for card_idx, card in enumerate(cards):
+        # Add optional title at top
+        if title:
+            elements.append(Paragraph(title, title_style))
+            elements.append(Spacer(1, 0.2*inch))
+        
+        # Create table data (no BINGO header)
+        table_data = []
+        card_size = len(card)
+        center = card_size // 2
+        
+        for row_idx, row in enumerate(card):
+            table_row = []
+            for col_idx, song in enumerate(row):
+                # Handle free space
+                if song == "FREE SPACE":
+                    if logo_image:
+                        # Add logo image
+                        try:
+                            logo_image.seek(0)  # Reset stream position
+                            img = PILImage.open(logo_image)
+                            
+                            # Calculate dimensions with zoom
+                            max_size = 60 * logo_zoom
+                            img.thumbnail((max_size, max_size), PILImage.Resampling.LANCZOS)
+                            
+                            # Save to BytesIO
+                            img_buffer = BytesIO()
+                            img.save(img_buffer, format='PNG')
+                            img_buffer.seek(0)
+                            
+                            # Create ReportLab image
+                            rl_img = RLImage(img_buffer, width=img.width, height=img.height)
+                            table_row.append(rl_img)
+                        except Exception as e:
+                            # Fallback to text if image fails
+                            table_row.append(Paragraph("FREE<br/>SPACE", 
+                                ParagraphStyle('center', alignment=TA_CENTER, fontSize=8)))
+                    else:
+                        # Text free space
+                        table_row.append(Paragraph("FREE<br/>SPACE", 
+                            ParagraphStyle('center', alignment=TA_CENTER, fontSize=8)))
+                else:
+                    # Regular song cell - wrap text
+                    song_text = song[:30] if len(song) <= 30 else song[:27] + "..."
+                    table_row.append(Paragraph(song_text, 
+                        ParagraphStyle('center', alignment=TA_CENTER, fontSize=7)))
+            table_data.append(table_row)
+        
+        # Create the table
+        col_width = 6.5*inch / card_size
+        table = Table(table_data, colWidths=[col_width] * card_size, 
+                     rowHeights=[col_width] * card_size)
+        
+        # Style the table
+        table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+        ]))
+        
+        elements.append(table)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Add card index in bottom corner
+        elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
+        
+        # Page break after each card (except the last)
+        if card_idx < len(cards) - 1:
+            elements.append(PageBreak())
+    
+    # Add operator reference sheet
+    elements.append(PageBreak())
+    
+    # Operator sheet title
+    op_title_style = ParagraphStyle(
+        'OpTitle',
+        parent=styles['Heading1'],
+        alignment=TA_CENTER,
+        spaceAfter=12
+    )
+    elements.append(Paragraph("Operator Reference Sheet", op_title_style))
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Instructions
+    elements.append(Paragraph(
+        "<b>Instructions:</b> This table shows the order in which bingo cards will win as you call songs from the playlist.",
+        styles['Normal']
+    ))
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Create operator table
+    op_data = [['Card', 'Win Round', 'Win Type', 'Place', 'Song Called']]
+    
+    for _, row in results_df.iterrows():
+        card_idx = f"Card #{int(row['Card Index'])}"
+        win_round = f"Round {int(row['Win Round'])}" if pd.notna(row['Win Round']) else "No Win"
+        win_type = row['Win Type'] if pd.notna(row['Win Type']) else "-"
+        
+        if pd.notna(row['Place']):
+            place = int(row['Place'])
+            if place == 1:
+                place_text = "🥇 1st"
+            elif place == 2:
+                place_text = "🥈 2nd"
+            elif place == 3:
+                place_text = "🥉 3rd"
+            else:
+                place_text = str(place)
+        else:
+            place_text = "-"
+        
+        song = row['Song Called'] if pd.notna(row['Song Called']) else "-"
+        
+        op_data.append([card_idx, win_round, win_type, place_text, song])
+    
+    op_table = Table(op_data, colWidths=[0.8*inch, 1.2*inch, 1.5*inch, 1*inch, 3*inch])
+    op_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#fff9c4')),  # 1st place
+        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#ffe0b2')),  # 2nd place
+        ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#ffccbc')),  # 3rd place
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    elements.append(op_table)
+    
+    # Build PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return buffer
+
 def main():
     st.title("🎵 Spotify Playlist Bingo Game Generator")
     st.write("Create unique bingo cards from your favorite Spotify playlist!")
@@ -229,6 +429,16 @@ def main():
     st.sidebar.subheader("Win Analysis")
     analyze_wins = st.sidebar.checkbox("Analyze Win Probabilities", value=True)
     
+    # PDF Customization
+    st.sidebar.subheader("PDF Customization")
+    card_title = st.sidebar.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
+    
+    # Logo upload
+    logo_file = st.sidebar.file_uploader("Upload Logo for Free Space (optional)", type=['png', 'jpg', 'jpeg'])
+    logo_zoom = 1.0
+    if logo_file:
+        logo_zoom = st.sidebar.slider("Logo Zoom", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
+    
     if playlist_url:
         if st.button("Generate Bingo Cards", type="primary"):
             with st.spinner("Fetching playlist tracks..."):
@@ -251,11 +461,46 @@ def main():
                 
                 st.success(f"Generated {len(cards)} bingo cards!")
                 
-                # Analyze wins
+                # Generate PDF
+                results_df = None
                 if analyze_wins:
                     with st.spinner("Analyzing win probabilities..."):
                         results_df = simulate_bingo_game(cards, songs)
+                else:
+                    # Create empty results dataframe if not analyzing
+                    results_df = pd.DataFrame({
+                        'Card Index': range(1, len(cards) + 1),
+                        'Win Round': [None] * len(cards),
+                        'Win Type': [None] * len(cards),
+                        'Place': [None] * len(cards),
+                        'Song Called': [None] * len(cards)
+                    })
+                
+                # Generate and offer PDF download
+                with st.spinner("Generating PDF..."):
+                    logo_bytes = None
+                    if logo_file:
+                        logo_bytes = BytesIO(logo_file.read())
+                        logo_file.seek(0)  # Reset for potential re-use
                     
+                    pdf_buffer = generate_bingo_pdf(
+                        cards, 
+                        results_df,
+                        title=card_title if card_title else None,
+                        logo_image=logo_bytes,
+                        logo_zoom=logo_zoom
+                    )
+                
+                st.download_button(
+                    label="📥 Download Complete PDF (Cards + Operator Sheet)",
+                    data=pdf_buffer,
+                    file_name="bingo_game_complete.pdf",
+                    mime="application/pdf",
+                    type="primary"
+                )
+                
+                # Analyze wins
+                if analyze_wins:
                     st.header("📊 Win Analysis")
                     
                     # Show summary statistics
