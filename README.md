@@ -63,6 +63,13 @@ For better reliability and higher rate limits, you can provide Spotify API crede
 2. Create an app and get your Client ID and Client Secret
 3. Enter them in the app's sidebar under "Spotify API Credentials"
 
+## Examples
+
+See [EXAMPLES.md](docs/EXAMPLES.md) for visual examples of:
+- 📋 Sample bingo card with classic rock songs
+- 📊 Operator reference sheet showing win progression
+- 🎮 Complete game flow walkthrough
+
 ## How It Works
 
 ### Bingo Card Generation
