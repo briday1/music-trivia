@@ -184,6 +184,19 @@ def generate_unique_bingo_cards(songs: List[str], num_cards: int, card_size: int
         cards.append(card)
     return cards
 
+def is_called(song: str, called_songs: Set[str]) -> bool:
+    """
+    Check if a song is called. FREE SPACE is always considered called.
+    
+    Args:
+        song: The song name to check
+        called_songs: Set of songs that have been called
+    
+    Returns:
+        True if the song is called or is FREE SPACE
+    """
+    return song == "FREE SPACE" or song in called_songs
+
 def count_complete_lines(card: List[List[str]], called_songs: Set[str]) -> Tuple[int, List[str]]:
     """
     Count the number of complete lines (rows or columns, no diagonals) on a card.
@@ -193,18 +206,14 @@ def count_complete_lines(card: List[List[str]], called_songs: Set[str]) -> Tuple
     card_size = len(card)
     complete_lines = []
     
-    # Helper function to check if a song is called (FREE SPACE is always considered called)
-    def is_called(song: str) -> bool:
-        return song == "FREE SPACE" or song in called_songs
-    
     # Check rows
     for i, row in enumerate(card):
-        if all(is_called(song) for song in row):
+        if all(is_called(song, called_songs) for song in row):
             complete_lines.append(f"Row {i+1}")
     
     # Check columns
     for col in range(card_size):
-        if all(is_called(card[row][col]) for row in range(card_size)):
+        if all(is_called(card[row][col], called_songs) for row in range(card_size)):
             complete_lines.append(f"Column {col+1}")
     
     return len(complete_lines), complete_lines
@@ -214,12 +223,9 @@ def check_full_card(card: List[List[str]], called_songs: Set[str]) -> bool:
     Check if all spaces on the card have been called.
     FREE SPACE is automatically considered as called/matched.
     """
-    def is_called(song: str) -> bool:
-        return song == "FREE SPACE" or song in called_songs
-    
     for row in card:
         for song in row:
-            if not is_called(song):
+            if not is_called(song, called_songs):
                 return False
     return True
 
@@ -293,22 +299,17 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
             if place == 3 and third_winner_round and round_num < third_winner_round:
                 continue
             
+            # Convert winning_card_indices to set for O(1) lookup
+            winning_card_indices = set(place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None)
+            
             # Check each card for this place's win condition
             for card_idx, card in enumerate(cards):
                 # Skip if card already won a place
-                if card_idx in [place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None]:
+                if card_idx in winning_card_indices:
                     continue
                 
                 has_won, win_type = check_bingo_win(card, called_songs, place)
                 if has_won:
-                    # Check if we've reached the target round for this place
-                    if place == 1 and first_winner_round and round_num < first_winner_round:
-                        continue
-                    if place == 2 and second_winner_round and round_num < second_winner_round:
-                        continue
-                    if place == 3 and third_winner_round and round_num < third_winner_round:
-                        continue
-                    
                     place_winners[place] = card_idx
                     results.append({
                         'Card Index': card_idx + 1,
@@ -324,7 +325,7 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
             break
     
     # Add cards that never won
-    winning_card_indices = [place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None]
+    winning_card_indices = set(place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None)
     for card_idx in range(len(cards)):
         if card_idx not in winning_card_indices:
             results.append({
@@ -586,16 +587,18 @@ def main():
     st.sidebar.subheader("Win Analysis")
     analyze_wins = st.sidebar.checkbox("Analyze Win Probabilities", value=True)
     
+    # Initialize round control variables
+    use_round_control = False
+    first_winner_round = None
+    second_winner_round = None
+    third_winner_round = None
+    
     # Winner round controls
     if analyze_wins:
         st.sidebar.markdown("**Winner Round Controls**")
         st.sidebar.caption("Set target rounds for each winner (optional)")
         
         use_round_control = st.sidebar.checkbox("Control Winner Rounds", value=False)
-        
-        first_winner_round = None
-        second_winner_round = None
-        third_winner_round = None
         
         if use_round_control:
             first_winner_round = st.sidebar.slider(
