@@ -40,7 +40,7 @@ def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret:
     
     This function uses a hybrid approach:
     1. First tries SpotAPI (no credentials needed) for public playlists
-    2. Falls back to Spotipy with Client Credentials if SpotAPI fails or credentials are provided
+    2. Falls back to Spotipy with Client Credentials if SpotAPI fails
     
     Args:
         playlist_url: Spotify playlist URL or ID
@@ -53,45 +53,55 @@ def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret:
     try:
         playlist_id = extract_playlist_id(playlist_url)
         
-        # Try to get credentials from parameters first, then fall back to environment variables
+        # Always try SpotAPI first for best user experience (no credentials needed)
+        try:
+            from spotapi import PublicPlaylist
+            
+            st.info("Attempting to fetch playlist without credentials using SpotAPI...")
+            playlist = PublicPlaylist(playlist_id)
+            result = playlist.get_playlist_info()
+            
+            # Extract track names from SpotAPI response
+            track_names = []
+            tracks = result.get('tracks', {}).get('items', [])
+            for item in tracks:
+                track = item.get('track', {})
+                if track and track.get('name'):
+                    track_names.append(track['name'])
+            
+            # Handle pagination if needed (with safety limit)
+            total_tracks = result.get('tracks', {}).get('total', len(track_names))
+            MAX_PAGINATION_PAGES = 50  # Safety limit to prevent infinite loops
+            page_count = 0
+            
+            if len(track_names) < total_tracks:
+                # Use pagination to get remaining tracks
+                for page_data in playlist.paginate_playlist():
+                    page_count += 1
+                    if page_count >= MAX_PAGINATION_PAGES:
+                        st.warning(f"Reached pagination limit. Got {len(track_names)} of {total_tracks} tracks.")
+                        break
+                    
+                    for item in page_data.get('items', []):
+                        track = item.get('track', {})
+                        if track and track.get('name'):
+                            track_names.append(track['name'])
+                    
+                    # Stop if we have all tracks
+                    if len(track_names) >= total_tracks:
+                        break
+            
+            if track_names:
+                st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
+                return track_names
+                
+        except Exception as spotapi_error:
+            st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
+        
+        # Fall back to Spotipy with credentials
         final_client_id = client_id or os.environ.get('SPOTIPY_CLIENT_ID')
         final_client_secret = client_secret or os.environ.get('SPOTIPY_CLIENT_SECRET')
         
-        # Try SpotAPI first (no credentials needed) if credentials are not provided
-        if not final_client_id or not final_client_secret:
-            try:
-                from spotapi import PublicPlaylist
-                
-                st.info("Attempting to fetch playlist without credentials using SpotAPI...")
-                playlist = PublicPlaylist(playlist_id)
-                result = playlist.get_playlist_info()
-                
-                # Extract track names from SpotAPI response
-                track_names = []
-                tracks = result.get('tracks', {}).get('items', [])
-                for item in tracks:
-                    track = item.get('track', {})
-                    if track and track.get('name'):
-                        track_names.append(track['name'])
-                
-                # Handle pagination if needed
-                total_tracks = result.get('tracks', {}).get('total', len(track_names))
-                if len(track_names) < total_tracks:
-                    # Use pagination to get remaining tracks
-                    for page_data in playlist.paginate_playlist():
-                        for item in page_data.get('items', []):
-                            track = item.get('track', {})
-                            if track and track.get('name'):
-                                track_names.append(track['name'])
-                
-                if track_names:
-                    st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
-                    return track_names
-                    
-            except Exception as spotapi_error:
-                st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
-        
-        # Fall back to Spotipy with credentials
         if not final_client_id or not final_client_secret:
             st.error("Spotify API credentials are required to access this playlist.")
             st.info("""
