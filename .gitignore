@@ -43,6 +43,3 @@ Thumbs.db
 
 # Environment variables
 .env
-
-# Test files
-test_app.py

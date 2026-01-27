@@ -4,9 +4,6 @@ Demo script showing the Spotify Bingo app functionality without Spotify API
 This demonstrates the core features with sample data.
 """
 
-import sys
-sys.path.insert(0, '/home/runner/work/music-trivia/music-trivia')
-
 from app import (
     create_bingo_card,
     generate_unique_bingo_cards,
@@ -72,7 +69,8 @@ def demo_bingo_game():
             song = winner['Song Called'].values[0]
             
             medals = {1: "🥇", 2: "🥈", 3: "🥉"}
-            print(f"{medals[place]} {place}st Place: Card #{card_idx}")
+            ordinals = {1: "1st", 2: "2nd", 3: "3rd"}
+            print(f"{medals[place]} {ordinals[place]} Place: Card #{card_idx}")
             print(f"   - Won in Round: {round_num}")
             print(f"   - Win Type: {win_type}")
             print(f"   - Winning Song: {song}")
