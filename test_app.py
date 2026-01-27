@@ -42,8 +42,8 @@ def test_bingo_card_generation():
     assert len(card) == 5, f"Card should have 5 rows, got {len(card)}"
     assert all(len(row) == 5 for row in card), "All rows should have 5 columns"
     
-    # Check all songs are from the original list
-    all_card_songs = [song for row in card for song in row]
+    # Check all songs are from the original list (excluding FREE SPACE)
+    all_card_songs = [song for row in card for song in row if song != "FREE SPACE"]
     assert all(song in songs for song in all_card_songs), "Card contains invalid songs"
     
     print("✓ Bingo card generation working correctly")
@@ -61,7 +61,7 @@ def test_unique_cards():
     print("✓ Multiple card generation working correctly")
 
 def test_bingo_win_detection():
-    """Test bingo win detection"""
+    """Test bingo win detection with new rules"""
     print("\nTesting bingo win detection...")
     
     # Create a simple 3x3 card for easier testing
@@ -71,28 +71,39 @@ def test_bingo_win_detection():
         ["Song7", "Song8", "Song9"]
     ]
     
-    # Test row win
+    # Test 1st place win (1 line) - row win
     called_songs = {"Song1", "Song2", "Song3"}
-    has_won, win_type = check_bingo_win(card, called_songs)
-    assert has_won, "Should detect row win"
+    has_won, win_type = check_bingo_win(card, called_songs, place=1)
+    assert has_won, "Should detect 1st place row win"
     assert "Row" in win_type, f"Should be a row win, got {win_type}"
     
-    # Test column win
+    # Test 1st place win (1 line) - column win
     called_songs = {"Song1", "Song4", "Song7"}
-    has_won, win_type = check_bingo_win(card, called_songs)
-    assert has_won, "Should detect column win"
+    has_won, win_type = check_bingo_win(card, called_songs, place=1)
+    assert has_won, "Should detect 1st place column win"
     assert "Column" in win_type, f"Should be a column win, got {win_type}"
     
-    # Test diagonal win (TL-BR)
-    called_songs = {"Song1", "Song5", "Song9"}
-    has_won, win_type = check_bingo_win(card, called_songs)
-    assert has_won, "Should detect diagonal win"
-    assert "Diagonal" in win_type, f"Should be a diagonal win, got {win_type}"
+    # Test 2nd place win (2 lines)
+    called_songs = {"Song1", "Song2", "Song3", "Song4", "Song5", "Song6"}
+    has_won, win_type = check_bingo_win(card, called_songs, place=2)
+    assert has_won, "Should detect 2nd place win with 2 lines"
+    assert "Row" in win_type, f"Should mention rows, got {win_type}"
     
-    # Test no win
+    # Test 3rd place win (full card)
+    called_songs = {"Song1", "Song2", "Song3", "Song4", "Song5", "Song6", "Song7", "Song8", "Song9"}
+    has_won, win_type = check_bingo_win(card, called_songs, place=3)
+    assert has_won, "Should detect 3rd place win with full card"
+    assert "Full Card" in win_type, f"Should be full card win, got {win_type}"
+    
+    # Test no win - insufficient songs for 1st place
     called_songs = {"Song1", "Song2"}
-    has_won, win_type = check_bingo_win(card, called_songs)
+    has_won, win_type = check_bingo_win(card, called_songs, place=1)
     assert not has_won, "Should not detect win with insufficient songs"
+    
+    # Test no diagonals for 1st place
+    called_songs = {"Song1", "Song5", "Song9"}
+    has_won, win_type = check_bingo_win(card, called_songs, place=1)
+    assert not has_won, "Should not detect diagonal as a win (diagonals not allowed)"
     
     print("✓ Bingo win detection working correctly")
 

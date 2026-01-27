@@ -55,13 +55,30 @@ The app will open in your default web browser at `http://localhost:8501`
 
 5. **Print**: Use your browser's print function (Ctrl+P / Cmd+P) to print cards
 
-### Optional: Spotify API Credentials
+### Spotify Authentication
 
-For better reliability and higher rate limits, you can provide Spotify API credentials:
+This app uses a **hybrid approach** for accessing Spotify playlists:
 
+#### Option 1: No Credentials (Easiest)
+The app will **automatically attempt** to fetch public playlists without requiring any credentials using SpotAPI. Just paste a playlist URL and go!
+
+#### Option 2: With Credentials (More Reliable)
+For better reliability, rate limits, and guaranteed access, you can provide Spotify API credentials:
+
+**For App Owners (Recommended):**
+Set environment variables so all users can access playlists:
+```bash
+export SPOTIPY_CLIENT_ID="your_client_id"
+export SPOTIPY_CLIENT_SECRET="your_client_secret"
+```
+
+**For Individual Users:**
 1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app and get your Client ID and Client Secret
-3. Enter them in the app's sidebar under "Spotify API Credentials"
+2. Create an app (or use an existing one)
+3. Get your Client ID and Client Secret
+4. Enter them in the app's sidebar under "Spotify API Credentials"
+
+**Note:** The credential-free approach uses SpotAPI, which accesses Spotify's web API. While it works for most public playlists, the official Spotify API (with credentials) is more reliable and has higher rate limits.
 
 ## Examples
 
@@ -78,18 +95,37 @@ See [EXAMPLES.md](docs/EXAMPLES.md) for visual examples of:
 - Each card is assigned a unique index number
 
 ### Win Analysis
-The app simulates a bingo game by:
-1. Shuffling the song order (simulating random calling)
-2. Calling songs one by one
-3. Checking each card for wins (rows, columns, diagonals)
-4. Recording the round number when each card wins
-5. Tracking 1st, 2nd, and 3rd place winners
+The app simulates a bingo game with the following winning rules:
+
+**1st Place Winner:**
+- Requires **one complete line** (horizontal or vertical)
+- No diagonals allowed
+- First card to achieve one line wins 1st place
+
+**2nd Place Winner:**
+- Requires **two complete lines** (horizontal or vertical)
+- Must be a different card from the 1st place winner
+- Only one winner per round
+
+**3rd Place Winner:**
+- Requires **full card** (all spaces called)
+- Must be a different card from 1st and 2nd place winners
+
+The simulation process:
+1. Shuffles the song order (simulating random calling)
+2. Calls songs one by one
+3. Checks each card for wins based on place requirements
+4. Records the round number when each card wins
+5. Ensures only one winner per round
+
+**Optional Round Control:**
+You can optionally set target rounds for each winner using sliders in the sidebar. This allows you to control when winners are determined during the game.
 
 ### Operator Table
 The operator table shows:
 - Card Index: Unique identifier for each card
 - Win Round: Which round the card will win
-- Win Type: How the card wins (Row, Column, or Diagonal)
+- Win Type: How the card wins (e.g., "Row 1", "Row 2, Column 3", "Full Card")
 - Place: Winner ranking (1st, 2nd, 3rd)
 - Song Called: The winning song
 

@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import random
 import re
+import os
 from typing import List, Tuple, Dict, Set, Optional
 import itertools
 from io import BytesIO
@@ -35,20 +36,91 @@ def extract_playlist_id(url: str) -> str:
     return url.strip()
 
 def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret: str = None) -> List[str]:
-    """Fetch track names from a Spotify playlist."""
+    """Fetch track names from a Spotify playlist.
+    
+    This function uses a hybrid approach:
+    1. First tries SpotAPI (no credentials needed) for public playlists
+    2. Falls back to Spotipy with Client Credentials if SpotAPI fails
+    
+    Args:
+        playlist_url: Spotify playlist URL or ID
+        client_id: Optional client ID (overrides environment variable)
+        client_secret: Optional client secret (overrides environment variable)
+    
+    Returns:
+        List of track names from the playlist
+    """
     try:
         playlist_id = extract_playlist_id(playlist_url)
         
-        if client_id and client_secret:
-            # Use credentials if provided
-            auth_manager = SpotifyClientCredentials(
-                client_id=client_id,
-                client_secret=client_secret
-            )
-            sp = spotipy.Spotify(auth_manager=auth_manager)
-        else:
-            # Use without authentication (limited functionality)
-            sp = spotipy.Spotify()
+        # Always try SpotAPI first for best user experience (no credentials needed)
+        try:
+            from spotapi import PublicPlaylist
+            
+            st.info("Attempting to fetch playlist without credentials using SpotAPI...")
+            playlist = PublicPlaylist(playlist_id)
+            result = playlist.get_playlist_info()
+            
+            # Extract track names from SpotAPI response
+            track_names = []
+            tracks = result.get('tracks', {}).get('items', [])
+            for item in tracks:
+                track = item.get('track', {})
+                if track and track.get('name'):
+                    track_names.append(track['name'])
+            
+            # Handle pagination if needed (with safety limit)
+            total_tracks = result.get('tracks', {}).get('total', len(track_names))
+            MAX_PAGINATION_PAGES = 50  # Safety limit to prevent infinite loops
+            page_count = 0
+            
+            if len(track_names) < total_tracks:
+                # Use pagination to get remaining tracks
+                for page_data in playlist.paginate_playlist():
+                    page_count += 1
+                    if page_count >= MAX_PAGINATION_PAGES:
+                        st.warning(f"Reached pagination limit. Got {len(track_names)} of {total_tracks} tracks.")
+                        break
+                    
+                    for item in page_data.get('items', []):
+                        track = item.get('track', {})
+                        if track and track.get('name'):
+                            track_names.append(track['name'])
+                    
+                    # Stop if we have all tracks
+                    if len(track_names) >= total_tracks:
+                        break
+            
+            if track_names:
+                st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
+                return track_names
+                
+        except Exception as spotapi_error:
+            st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
+        
+        # Fall back to Spotipy with credentials
+        final_client_id = client_id or os.environ.get('SPOTIPY_CLIENT_ID')
+        final_client_secret = client_secret or os.environ.get('SPOTIPY_CLIENT_SECRET')
+        
+        if not final_client_id or not final_client_secret:
+            st.error("Spotify API credentials are required to access this playlist.")
+            st.info("""
+            **Option 1 (Recommended for app owners):** Set environment variables:
+            - `SPOTIPY_CLIENT_ID`
+            - `SPOTIPY_CLIENT_SECRET`
+            
+            **Option 2:** Provide credentials in the sidebar below.
+            
+            Get free credentials at: https://developer.spotify.com/dashboard
+            """)
+            return []
+        
+        # Use Spotipy with credentials
+        auth_manager = SpotifyClientCredentials(
+            client_id=final_client_id,
+            client_secret=final_client_secret
+        )
+        sp = spotipy.Spotify(auth_manager=auth_manager)
         
         # Get playlist tracks
         results = sp.playlist_tracks(playlist_id)
@@ -112,36 +184,94 @@ def generate_unique_bingo_cards(songs: List[str], num_cards: int, card_size: int
         cards.append(card)
     return cards
 
-def check_bingo_win(card: List[List[str]], called_songs: Set[str]) -> Tuple[bool, str]:
+def is_called(song: str, called_songs: Set[str]) -> bool:
     """
-    Check if a card has a bingo (row, column, or diagonal).
-    Returns (has_won, win_type)
+    Check if a song is called. FREE SPACE is always considered called.
+    
+    Args:
+        song: The song name to check
+        called_songs: Set of songs that have been called
+    
+    Returns:
+        True if the song is called or is FREE SPACE
+    """
+    return song == "FREE SPACE" or song in called_songs
+
+def count_complete_lines(card: List[List[str]], called_songs: Set[str]) -> Tuple[int, List[str]]:
+    """
+    Count the number of complete lines (rows or columns, no diagonals) on a card.
+    Returns (count, list of line descriptions)
+    FREE SPACE is automatically considered as called/matched.
     """
     card_size = len(card)
+    complete_lines = []
     
     # Check rows
     for i, row in enumerate(card):
-        if all(song in called_songs for song in row):
-            return True, f"Row {i+1}"
+        if all(is_called(song, called_songs) for song in row):
+            complete_lines.append(f"Row {i+1}")
     
     # Check columns
     for col in range(card_size):
-        if all(card[row][col] in called_songs for row in range(card_size)):
-            return True, f"Column {col+1}"
+        if all(is_called(card[row][col], called_songs) for row in range(card_size)):
+            complete_lines.append(f"Column {col+1}")
     
-    # Check diagonal (top-left to bottom-right)
-    if all(card[i][i] in called_songs for i in range(card_size)):
-        return True, "Diagonal (TL-BR)"
-    
-    # Check diagonal (top-right to bottom-left)
-    if all(card[i][card_size - 1 - i] in called_songs for i in range(card_size)):
-        return True, "Diagonal (TR-BL)"
+    return len(complete_lines), complete_lines
+
+def check_full_card(card: List[List[str]], called_songs: Set[str]) -> bool:
+    """
+    Check if all spaces on the card have been called.
+    FREE SPACE is automatically considered as called/matched.
+    """
+    for row in card:
+        for song in row:
+            if not is_called(song, called_songs):
+                return False
+    return True
+
+def check_bingo_win(card: List[List[str]], called_songs: Set[str], place: int) -> Tuple[bool, str]:
+    """
+    Check if a card has won based on the place (1st, 2nd, or 3rd).
+    - 1st place: One complete line (row or column, no diagonals)
+    - 2nd place: Two complete lines (rows or columns)
+    - 3rd place: Full card (all spaces called)
+    Returns (has_won, win_type)
+    FREE SPACE is automatically considered as called/matched.
+    """
+    if place == 1:
+        # 1st place needs at least 1 line
+        line_count, lines = count_complete_lines(card, called_songs)
+        if line_count >= 1:
+            return True, lines[0]
+    elif place == 2:
+        # 2nd place needs at least 2 lines
+        line_count, lines = count_complete_lines(card, called_songs)
+        if line_count >= 2:
+            return True, f"{lines[0]}, {lines[1]}"
+    elif place == 3:
+        # 3rd place needs full card
+        if check_full_card(card, called_songs):
+            return True, "Full Card"
     
     return False, ""
 
-def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str]) -> pd.DataFrame:
+def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str], 
+                        first_winner_round: int = None, 
+                        second_winner_round: int = None,
+                        third_winner_round: int = None) -> pd.DataFrame:
     """
-    Simulate the bingo game and determine when each card wins.
+    Simulate the bingo game and determine when each card wins based on new rules:
+    - 1st place: One complete line (row or column, no diagonals)
+    - 2nd place: Two complete lines
+    - 3rd place: Full card
+    
+    Args:
+        cards: List of bingo cards
+        songs: List of all songs in the playlist
+        first_winner_round: Target round for 1st place winner (optional)
+        second_winner_round: Target round for 2nd place winner (optional)
+        third_winner_round: Target round for 3rd place winner (optional)
+    
     Returns a DataFrame with card index, win round, and win type.
     """
     # Shuffle the song order for calling
@@ -149,33 +279,55 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str]) -> pd.Da
     random.shuffle(call_order)
     
     results = []
-    winners = []
+    place_winners = {1: None, 2: None, 3: None}  # Track which card won each place
     called_songs = set()
     
     for round_num, song in enumerate(call_order, 1):
         called_songs.add(song)
         
-        # Check each card that hasn't won yet
-        for card_idx, card in enumerate(cards):
-            # Skip if card already won
-            if card_idx in winners:
+        # Check for each place in order (1st, 2nd, 3rd)
+        for place in [1, 2, 3]:
+            # Skip if this place already has a winner
+            if place_winners[place] is not None:
                 continue
             
-            has_won, win_type = check_bingo_win(card, called_songs)
-            if has_won:
-                winners.append(card_idx)
-                place = len(winners)
-                results.append({
-                    'Card Index': card_idx + 1,
-                    'Win Round': round_num,
-                    'Win Type': win_type,
-                    'Place': place,
-                    'Song Called': song
-                })
+            # Skip if we're not at the target round for this place yet
+            if place == 1 and first_winner_round and round_num < first_winner_round:
+                continue
+            if place == 2 and second_winner_round and round_num < second_winner_round:
+                continue
+            if place == 3 and third_winner_round and round_num < third_winner_round:
+                continue
+            
+            # Convert winning_card_indices to set for O(1) lookup
+            winning_card_indices = set(place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None)
+            
+            # Check each card for this place's win condition
+            for card_idx, card in enumerate(cards):
+                # Skip if card already won a place
+                if card_idx in winning_card_indices:
+                    continue
+                
+                has_won, win_type = check_bingo_win(card, called_songs, place)
+                if has_won:
+                    place_winners[place] = card_idx
+                    results.append({
+                        'Card Index': card_idx + 1,
+                        'Win Round': round_num,
+                        'Win Type': win_type,
+                        'Place': place,
+                        'Song Called': song
+                    })
+                    break  # Only one winner per round per place
+        
+        # Stop if all three places have winners
+        if all(place_winners[p] is not None for p in [1, 2, 3]):
+            break
     
     # Add cards that never won
+    winning_card_indices = set(place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None)
     for card_idx in range(len(cards)):
-        if card_idx not in winners:
+        if card_idx not in winning_card_indices:
             results.append({
                 'Card Index': card_idx + 1,
                 'Win Round': None,
@@ -408,9 +560,15 @@ def main():
     # Sidebar for configuration
     st.sidebar.header("Configuration")
     
-    # Spotify credentials (optional)
+    # Spotify credentials (optional but recommended)
     with st.sidebar.expander("Spotify API Credentials (Optional)", expanded=False):
-        st.info("You can provide Spotify API credentials for better reliability. Get them at https://developer.spotify.com/")
+        st.info("""
+        **No credentials?** The app will try to fetch playlists without them first.
+        
+        **Have credentials?** Provide them for more reliable access and higher rate limits.
+        
+        Get free credentials at: https://developer.spotify.com/dashboard
+        """)
         client_id = st.text_input("Client ID", type="password")
         client_secret = st.text_input("Client Secret", type="password")
     
@@ -428,6 +586,42 @@ def main():
     # Win guarantee settings
     st.sidebar.subheader("Win Analysis")
     analyze_wins = st.sidebar.checkbox("Analyze Win Probabilities", value=True)
+    
+    # Initialize round control variables
+    use_round_control = False
+    first_winner_round = None
+    second_winner_round = None
+    third_winner_round = None
+    
+    # Winner round controls
+    if analyze_wins:
+        st.sidebar.markdown("**Winner Round Controls**")
+        st.sidebar.caption("Set target rounds for each winner (optional)")
+        
+        use_round_control = st.sidebar.checkbox("Control Winner Rounds", value=False)
+        
+        if use_round_control:
+            first_winner_round = st.sidebar.slider(
+                "1st Winner Round (1 line)",
+                min_value=1,
+                max_value=100,
+                value=10,
+                help="Minimum round for the first winner"
+            )
+            second_winner_round = st.sidebar.slider(
+                "2nd Winner Round (2 lines)",
+                min_value=first_winner_round + 1,
+                max_value=100,
+                value=min(20, first_winner_round + 10),
+                help="Minimum round for the second winner"
+            )
+            third_winner_round = st.sidebar.slider(
+                "3rd Winner Round (full card)",
+                min_value=second_winner_round + 1,
+                max_value=100,
+                value=min(30, second_winner_round + 10),
+                help="Minimum round for the third winner"
+            )
     
     # PDF Customization
     st.sidebar.subheader("PDF Customization")
@@ -465,7 +659,13 @@ def main():
                 results_df = None
                 if analyze_wins:
                     with st.spinner("Analyzing win probabilities..."):
-                        results_df = simulate_bingo_game(cards, songs)
+                        results_df = simulate_bingo_game(
+                            cards, 
+                            songs,
+                            first_winner_round if use_round_control else None,
+                            second_winner_round if use_round_control else None,
+                            third_winner_round if use_round_control else None
+                        )
                 else:
                     # Create empty results dataframe if not analyzing
                     results_df = pd.DataFrame({
