@@ -638,8 +638,8 @@ def main():
             with st.spinner("Fetching playlist tracks..."):
                 songs = get_playlist_tracks(
                     playlist_url,
-                    client_id.strip() if client_id and client_id.strip() else None,
-                    client_secret.strip() if client_secret and client_secret.strip() else None
+                    client_id.strip() or None,
+                    client_secret.strip() or None
                 )
             
             if songs:
