@@ -95,18 +95,37 @@ See [EXAMPLES.md](docs/EXAMPLES.md) for visual examples of:
 - Each card is assigned a unique index number
 
 ### Win Analysis
-The app simulates a bingo game by:
-1. Shuffling the song order (simulating random calling)
-2. Calling songs one by one
-3. Checking each card for wins (rows, columns, diagonals)
-4. Recording the round number when each card wins
-5. Tracking 1st, 2nd, and 3rd place winners
+The app simulates a bingo game with the following winning rules:
+
+**1st Place Winner:**
+- Requires **one complete line** (horizontal or vertical)
+- No diagonals allowed
+- First card to achieve one line wins 1st place
+
+**2nd Place Winner:**
+- Requires **two complete lines** (horizontal or vertical)
+- Must be a different card from the 1st place winner
+- Only one winner per round
+
+**3rd Place Winner:**
+- Requires **full card** (all spaces called)
+- Must be a different card from 1st and 2nd place winners
+
+The simulation process:
+1. Shuffles the song order (simulating random calling)
+2. Calls songs one by one
+3. Checks each card for wins based on place requirements
+4. Records the round number when each card wins
+5. Ensures only one winner per round
+
+**Optional Round Control:**
+You can optionally set target rounds for each winner using sliders in the sidebar. This allows you to control when winners are determined during the game.
 
 ### Operator Table
 The operator table shows:
 - Card Index: Unique identifier for each card
 - Win Round: Which round the card will win
-- Win Type: How the card wins (Row, Column, or Diagonal)
+- Win Type: How the card wins (e.g., "Row 1", "Row 2, Column 3", "Full Card")
 - Place: Winner ranking (1st, 2nd, 3rd)
 - Song Called: The winning song
 
