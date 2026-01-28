@@ -36,16 +36,12 @@ def extract_playlist_id(url: str) -> str:
     return url.strip()
 
 def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret: str = None) -> List[str]:
-    """Fetch track names from a Spotify playlist.
-    
-    This function uses a hybrid approach:
-    1. First tries SpotAPI (no credentials needed) for public playlists
-    2. Falls back to Spotipy with Client Credentials if SpotAPI fails
+    """Fetch track names from a Spotify playlist using Spotify API credentials.
     
     Args:
         playlist_url: Spotify playlist URL or ID
-        client_id: Optional client ID (overrides environment variable)
-        client_secret: Optional client secret (overrides environment variable)
+        client_id: Client ID (overrides environment variable)
+        client_secret: Client secret (overrides environment variable)
     
     Returns:
         List of track names from the playlist
@@ -53,65 +49,18 @@ def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret:
     try:
         playlist_id = extract_playlist_id(playlist_url)
         
-        # Always try SpotAPI first for best user experience (no credentials needed)
-        try:
-            from spotapi import PublicPlaylist
-            
-            st.info("Attempting to fetch playlist without credentials using SpotAPI...")
-            playlist = PublicPlaylist(playlist_id)
-            result = playlist.get_playlist_info()
-            
-            # Extract track names from SpotAPI response
-            track_names = []
-            tracks = result.get('tracks', {}).get('items', [])
-            for item in tracks:
-                track = item.get('track', {})
-                if track and track.get('name'):
-                    track_names.append(track['name'])
-            
-            # Handle pagination if needed (with safety limit)
-            total_tracks = result.get('tracks', {}).get('total', len(track_names))
-            MAX_PAGINATION_PAGES = 50  # Safety limit to prevent infinite loops
-            page_count = 0
-            
-            if len(track_names) < total_tracks:
-                # Use pagination to get remaining tracks
-                for page_data in playlist.paginate_playlist():
-                    page_count += 1
-                    if page_count >= MAX_PAGINATION_PAGES:
-                        st.warning(f"Reached pagination limit. Got {len(track_names)} of {total_tracks} tracks.")
-                        break
-                    
-                    for item in page_data.get('items', []):
-                        track = item.get('track', {})
-                        if track and track.get('name'):
-                            track_names.append(track['name'])
-                    
-                    # Stop if we have all tracks
-                    if len(track_names) >= total_tracks:
-                        break
-            
-            if track_names:
-                st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
-                return track_names
-                
-        except Exception as spotapi_error:
-            st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
-        
-        # Fall back to Spotipy with credentials
+        # Get credentials from parameters or environment variables
         final_client_id = client_id or os.environ.get('SPOTIPY_CLIENT_ID')
         final_client_secret = client_secret or os.environ.get('SPOTIPY_CLIENT_SECRET')
         
         if not final_client_id or not final_client_secret:
             st.error("Spotify API credentials are required to access this playlist.")
             st.info("""
-            **Option 1 (Recommended for app owners):** Set environment variables:
+            Get free credentials at: https://developer.spotify.com/dashboard
+            
+            You can also set environment variables:
             - `SPOTIPY_CLIENT_ID`
             - `SPOTIPY_CLIENT_SECRET`
-            
-            **Option 2:** Provide credentials in the sidebar below.
-            
-            Get free credentials at: https://developer.spotify.com/dashboard
             """)
             return []
         
@@ -557,26 +506,28 @@ def main():
     st.title("🎵 Spotify Playlist Bingo Game Generator")
     st.write("Create unique bingo cards from your favorite Spotify playlist!")
     
-    # Sidebar for configuration
-    st.sidebar.header("Configuration")
+    # Spotify API Credentials (on main page)
+    st.subheader("Spotify API Credentials")
+    st.info("""
+    Enter your Spotify API credentials to fetch playlists. Get free credentials at: https://developer.spotify.com/dashboard
     
-    # Spotify credentials (optional but recommended)
-    with st.sidebar.expander("Spotify API Credentials (Optional)", expanded=False):
-        st.info("""
-        **No credentials?** The app will try to fetch playlists without them first.
-        
-        **Have credentials?** Provide them for more reliable access and higher rate limits.
-        
-        Get free credentials at: https://developer.spotify.com/dashboard
-        """)
-        client_id = st.text_input("Client ID", type="password")
-        client_secret = st.text_input("Client Secret", type="password")
+    Alternatively, set environment variables `SPOTIPY_CLIENT_ID` and `SPOTIPY_CLIENT_SECRET`.
+    """)
     
-    # Main input
+    col1, col2 = st.columns(2)
+    with col1:
+        client_id = st.text_input("Client ID", type="password", help="Your Spotify API Client ID")
+    with col2:
+        client_secret = st.text_input("Client Secret", type="password", help="Your Spotify API Client Secret")
+    
+    # Playlist URL input
     playlist_url = st.text_input(
         "Spotify Playlist URL or ID",
         placeholder="https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
     )
+    
+    # Sidebar for configuration
+    st.sidebar.header("Configuration")
     
     # Bingo game settings
     st.sidebar.subheader("Bingo Settings")
