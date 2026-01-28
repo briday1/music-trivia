@@ -57,28 +57,20 @@ The app will open in your default web browser at `http://localhost:8501`
 
 ### Spotify Authentication
 
-This app uses a **hybrid approach** for accessing Spotify playlists:
+This app requires Spotify API credentials to access playlists.
 
-#### Option 1: No Credentials (Easiest)
-The app will **automatically attempt** to fetch public playlists without requiring any credentials using SpotAPI. Just paste a playlist URL and go!
+**To get credentials:**
+1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Create an app (or use an existing one)
+3. Get your Client ID and Client Secret
+4. Enter them in the app when prompted
 
-#### Option 2: With Credentials (More Reliable)
-For better reliability, rate limits, and guaranteed access, you can provide Spotify API credentials:
-
-**For App Owners (Recommended):**
-Set environment variables so all users can access playlists:
+**For App Owners:**
+Set environment variables so all users can use your credentials:
 ```bash
 export SPOTIPY_CLIENT_ID="your_client_id"
 export SPOTIPY_CLIENT_SECRET="your_client_secret"
 ```
-
-**For Individual Users:**
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create an app (or use an existing one)
-3. Get your Client ID and Client Secret
-4. Enter them in the app's sidebar under "Spotify API Credentials"
-
-**Note:** The credential-free approach uses SpotAPI, which accesses Spotify's web API. While it works for most public playlists, the official Spotify API (with credentials) is more reliable and has higher rate limits.
 
 ## Examples
 
