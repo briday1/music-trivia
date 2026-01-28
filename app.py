@@ -1,11 +1,7 @@
 import streamlit as st
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
 import pandas as pd
 import numpy as np
 import random
-import re
-import os
 from typing import List, Tuple, Dict, Set, Optional
 import itertools
 from io import BytesIO
@@ -17,130 +13,39 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
 from PIL import Image as PILImage
 
-st.set_page_config(page_title="Spotify Bingo Game", layout="wide")
+st.set_page_config(page_title="Music Bingo Game", layout="wide")
 
-def extract_playlist_id(url: str) -> str:
-    """Extract playlist ID from Spotify URL."""
-    # Pattern for Spotify playlist URLs
-    patterns = [
-        r'playlist/([a-zA-Z0-9]+)',
-        r'playlist:([a-zA-Z0-9]+)'
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    
-    # If no pattern matches, assume the input is already a playlist ID
-    return url.strip()
-
-def get_playlist_tracks(playlist_url: str, client_id: str = None, client_secret: str = None) -> List[str]:
-    """Fetch track names from a Spotify playlist.
-    
-    This function uses a hybrid approach:
-    1. First tries SpotAPI (no credentials needed) for public playlists
-    2. Falls back to Spotipy with Client Credentials if SpotAPI fails
+def parse_csv_tracks(uploaded_file) -> List[str]:
+    """Parse track names from an Exportify CSV file.
     
     Args:
-        playlist_url: Spotify playlist URL or ID
-        client_id: Optional client ID (overrides environment variable)
-        client_secret: Optional client secret (overrides environment variable)
+        uploaded_file: Streamlit UploadedFile object containing the CSV
     
     Returns:
-        List of track names from the playlist
+        List of track names from the CSV
     """
     try:
-        playlist_id = extract_playlist_id(playlist_url)
+        # Read the CSV file
+        df = pd.read_csv(uploaded_file)
         
-        # Always try SpotAPI first for best user experience (no credentials needed)
-        try:
-            from spotapi import PublicPlaylist
-            
-            st.info("Attempting to fetch playlist without credentials using SpotAPI...")
-            playlist = PublicPlaylist(playlist_id)
-            result = playlist.get_playlist_info()
-            
-            # Extract track names from SpotAPI response
-            track_names = []
-            tracks = result.get('tracks', {}).get('items', [])
-            for item in tracks:
-                track = item.get('track', {})
-                if track and track.get('name'):
-                    track_names.append(track['name'])
-            
-            # Handle pagination if needed (with safety limit)
-            total_tracks = result.get('tracks', {}).get('total', len(track_names))
-            MAX_PAGINATION_PAGES = 50  # Safety limit to prevent infinite loops
-            page_count = 0
-            
-            if len(track_names) < total_tracks:
-                # Use pagination to get remaining tracks
-                for page_data in playlist.paginate_playlist():
-                    page_count += 1
-                    if page_count >= MAX_PAGINATION_PAGES:
-                        st.warning(f"Reached pagination limit. Got {len(track_names)} of {total_tracks} tracks.")
-                        break
-                    
-                    for item in page_data.get('items', []):
-                        track = item.get('track', {})
-                        if track and track.get('name'):
-                            track_names.append(track['name'])
-                    
-                    # Stop if we have all tracks
-                    if len(track_names) >= total_tracks:
-                        break
-            
-            if track_names:
-                st.success(f"Successfully fetched {len(track_names)} tracks without credentials!")
-                return track_names
-                
-        except Exception as spotapi_error:
-            st.warning(f"SpotAPI failed: {str(spotapi_error)}. Trying with Spotify API credentials...")
-        
-        # Fall back to Spotipy with credentials
-        final_client_id = client_id or os.environ.get('SPOTIPY_CLIENT_ID')
-        final_client_secret = client_secret or os.environ.get('SPOTIPY_CLIENT_SECRET')
-        
-        if not final_client_id or not final_client_secret:
-            st.error("Spotify API credentials are required to access this playlist.")
-            st.info("""
-            **Option 1 (Recommended for app owners):** Set environment variables:
-            - `SPOTIPY_CLIENT_ID`
-            - `SPOTIPY_CLIENT_SECRET`
-            
-            **Option 2:** Provide credentials in the sidebar below.
-            
-            Get free credentials at: https://developer.spotify.com/dashboard
-            """)
+        # Check if "Track Name" column exists
+        if "Track Name" not in df.columns:
+            st.error("CSV file must contain a 'Track Name' column. Please ensure you're using a CSV exported from Exportify.")
+            st.info("Available columns: " + ", ".join(df.columns.tolist()))
             return []
         
-        # Use Spotipy with credentials
-        auth_manager = SpotifyClientCredentials(
-            client_id=final_client_id,
-            client_secret=final_client_secret
-        )
-        sp = spotipy.Spotify(auth_manager=auth_manager)
-        
-        # Get playlist tracks
-        results = sp.playlist_tracks(playlist_id)
-        tracks = results['items']
-        
-        # Handle pagination if playlist has more than 100 songs
-        while results['next']:
-            results = sp.next(results)
-            tracks.extend(results['items'])
-        
         # Extract track names
-        track_names = []
-        for item in tracks:
-            if item['track'] and item['track']['name']:
-                track_names.append(item['track']['name'])
+        track_names = df["Track Name"].dropna().tolist()
+        
+        if not track_names:
+            st.error("No track names found in the CSV file.")
+            return []
         
         return track_names
     
     except Exception as e:
-        st.error(f"Error fetching playlist: {str(e)}")
+        st.error(f"Error parsing CSV file: {str(e)}")
+        st.info("Please ensure you're uploading a valid CSV file exported from Exportify (https://exportify.net/)")
         return []
 
 def create_bingo_card(songs: List[str], card_size: int = 5, free_space: bool = True) -> List[List[str]]:
@@ -475,10 +380,26 @@ def generate_bingo_pdf(
         ]))
         
         elements.append(table)
-        elements.append(Spacer(1, 0.2*inch))
+        elements.append(Spacer(1, 0.1*inch))
         
-        # Add card index in bottom corner
+        # Add card index and game instructions at the bottom
         elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # Add minimal game instructions at the bottom
+        instructions_style = ParagraphStyle(
+            'Instructions',
+            parent=styles['Normal'],
+            fontSize=7,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        instructions_text = (
+            "First place winner: One line (up/down, left/right). "
+            "Second place winner: Two lines. "
+            "Third place winner: Fill sheet"
+        )
+        elements.append(Paragraph(instructions_text, instructions_style))
         
         # Page break after each card (except the last)
         if card_idx < len(cards) - 1:
@@ -554,38 +475,42 @@ def generate_bingo_pdf(
     return buffer
 
 def main():
-    st.title("🎵 Spotify Playlist Bingo Game Generator")
-    st.write("Create unique bingo cards from your favorite Spotify playlist!")
+    st.title("🎵 Music Bingo Game Generator")
+    st.write("Create unique bingo cards from your Spotify playlists!")
     
-    # Sidebar for configuration
-    st.sidebar.header("Configuration")
+    # Instructions for using Exportify
+    st.info("""
+    ### 📋 How to Use This App:
     
-    # Spotify credentials (optional but recommended)
-    with st.sidebar.expander("Spotify API Credentials (Optional)", expanded=False):
-        st.info("""
-        **No credentials?** The app will try to fetch playlists without them first.
-        
-        **Have credentials?** Provide them for more reliable access and higher rate limits.
-        
-        Get free credentials at: https://developer.spotify.com/dashboard
-        """)
-        client_id = st.text_input("Client ID", type="password")
-        client_secret = st.text_input("Client Secret", type="password")
+    1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) to export your Spotify playlist(s) to CSV
+    2. **Upload CSV**: Upload the exported CSV file below
+    3. **Configure Settings**: Adjust card size, number of cards, and other options below
+    4. **Generate Cards**: Click "Generate Bingo Cards" to create your bingo game
     
-    # Main input
-    playlist_url = st.text_input(
-        "Spotify Playlist URL or ID",
-        placeholder="https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+    **Note:** This app works with CSV files exported from [Exportify](https://exportify.net/), which contains your Spotify playlist data.
+    """)
+    
+    # CSV file uploader
+    uploaded_file = st.file_uploader(
+        "Upload Exportify CSV File",
+        type=['csv'],
+        help="Upload a CSV file exported from https://exportify.net/"
     )
     
-    # Bingo game settings
-    st.sidebar.subheader("Bingo Settings")
-    num_cards = st.sidebar.slider("Number of Bingo Cards", min_value=1, max_value=100, value=10)
-    card_size = st.sidebar.slider("Card Size (NxN)", min_value=3, max_value=7, value=5)
+    # Configuration section - moved from sidebar
+    st.divider()
+    st.subheader("⚙️ Configuration")
     
-    # Win guarantee settings
-    st.sidebar.subheader("Win Analysis")
-    analyze_wins = st.sidebar.checkbox("Analyze Win Probabilities", value=True)
+    # Bingo game settings in columns
+    col1, col2 = st.columns(2)
+    with col1:
+        num_cards = st.slider("Number of Bingo Cards", min_value=1, max_value=100, value=10)
+    with col2:
+        card_size = st.slider("Card Size (NxN)", min_value=3, max_value=7, value=5)
+    
+    # Win Analysis section
+    st.divider()
+    analyze_wins = st.checkbox("Analyze Win Probabilities", value=True)
     
     # Initialize round control variables
     use_round_control = False
@@ -595,52 +520,56 @@ def main():
     
     # Winner round controls
     if analyze_wins:
-        st.sidebar.markdown("**Winner Round Controls**")
-        st.sidebar.caption("Set target rounds for each winner (optional)")
-        
-        use_round_control = st.sidebar.checkbox("Control Winner Rounds", value=False)
-        
-        if use_round_control:
-            first_winner_round = st.sidebar.slider(
-                "1st Winner Round (1 line)",
-                min_value=1,
-                max_value=100,
-                value=10,
-                help="Minimum round for the first winner"
-            )
-            second_winner_round = st.sidebar.slider(
-                "2nd Winner Round (2 lines)",
-                min_value=first_winner_round + 1,
-                max_value=100,
-                value=min(20, first_winner_round + 10),
-                help="Minimum round for the second winner"
-            )
-            third_winner_round = st.sidebar.slider(
-                "3rd Winner Round (full card)",
-                min_value=second_winner_round + 1,
-                max_value=100,
-                value=min(30, second_winner_round + 10),
-                help="Minimum round for the third winner"
-            )
+        with st.expander("Winner Round Controls (Optional)"):
+            st.caption("Set target rounds for each winner")
+            use_round_control = st.checkbox("Control Winner Rounds", value=False)
+            
+            if use_round_control:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    first_winner_round = st.slider(
+                        "1st Winner Round (1 line)",
+                        min_value=1,
+                        max_value=100,
+                        value=10,
+                        help="Minimum round for the first winner"
+                    )
+                with col2:
+                    second_winner_round = st.slider(
+                        "2nd Winner Round (2 lines)",
+                        min_value=first_winner_round + 1,
+                        max_value=100,
+                        value=min(20, first_winner_round + 10),
+                        help="Minimum round for the second winner"
+                    )
+                with col3:
+                    third_winner_round = st.slider(
+                        "3rd Winner Round (full card)",
+                        min_value=second_winner_round + 1,
+                        max_value=100,
+                        value=min(30, second_winner_round + 10),
+                        help="Minimum round for the third winner"
+                    )
     
     # PDF Customization
-    st.sidebar.subheader("PDF Customization")
-    card_title = st.sidebar.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
+    st.divider()
+    with st.expander("PDF Customization (Optional)"):
+        card_title = st.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            logo_file = st.file_uploader("Upload Logo for Free Space (optional)", type=['png', 'jpg', 'jpeg'])
+        with col2:
+            logo_zoom = 1.0
+            if logo_file:
+                logo_zoom = st.slider("Logo Zoom", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
     
-    # Logo upload
-    logo_file = st.sidebar.file_uploader("Upload Logo for Free Space (optional)", type=['png', 'jpg', 'jpeg'])
-    logo_zoom = 1.0
-    if logo_file:
-        logo_zoom = st.sidebar.slider("Logo Zoom", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
+    st.divider()
     
-    if playlist_url:
+    if uploaded_file:
         if st.button("Generate Bingo Cards", type="primary"):
-            with st.spinner("Fetching playlist tracks..."):
-                songs = get_playlist_tracks(
-                    playlist_url,
-                    client_id if client_id else None,
-                    client_secret if client_secret else None
-                )
+            with st.spinner("Parsing CSV file..."):
+                songs = parse_csv_tracks(uploaded_file)
             
             if songs:
                 st.success(f"Found {len(songs)} songs in the playlist!")
@@ -780,18 +709,19 @@ def main():
                 st.info("💡 **Printing Tip**: Use your browser's Print function (Ctrl+P or Cmd+P) to print all bingo cards. "
                        "Each card will automatically be on its own page.")
             else:
-                st.error("Could not fetch songs from the playlist. Please check the URL and try again.")
+                st.error("Could not parse songs from the CSV file. Please check the file format and try again.")
     
     # Instructions
     with st.expander("ℹ️ How to Use"):
         st.markdown("""
         ### Getting Started
-        1. **Get a Spotify Playlist URL**: Copy the link to any public Spotify playlist
-        2. **Paste the URL**: Enter it in the text box above
-        3. **Configure Settings**: Use the sidebar to adjust the number of cards and card size
-        4. **Generate**: Click the "Generate Bingo Cards" button
-        5. **Analyze**: Review the win analysis table to see which cards will win in which rounds
-        6. **Print**: Use your browser's print function to print the bingo cards
+        1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) and authorize with Spotify
+        2. **Download CSV**: Click "Export" on your desired playlist to download a CSV file
+        3. **Upload CSV**: Upload the CSV file using the file uploader above
+        4. **Configure Settings**: Adjust the number of cards and card size in the Configuration section
+        5. **Generate**: Click the "Generate Bingo Cards" button
+        6. **Analyze**: Review the win analysis table to see which cards will win in which rounds
+        7. **Print**: Use your browser's print function to print the bingo cards
         
         ### Features
         - 🎲 **Unique Cards**: Each bingo card is randomly generated with different songs
@@ -804,6 +734,7 @@ def main():
         - The win analysis simulates calling songs in a random order
         - Each card has a unique index for tracking
         - You can generate up to 100 cards at once
+        - CSV files from [Exportify](https://exportify.net/) are the only supported format
         """)
 
 if __name__ == "__main__":

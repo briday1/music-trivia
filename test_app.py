@@ -1,34 +1,17 @@
 #!/usr/bin/env python3
 """
-Test script for the Spotify Bingo app core functionality
+Test script for the Music Bingo app core functionality
 """
 
 import sys
 sys.path.insert(0, '/home/runner/work/music-trivia/music-trivia')
 
 from app import (
-    extract_playlist_id,
     create_bingo_card,
     generate_unique_bingo_cards,
     check_bingo_win,
     simulate_bingo_game
 )
-
-def test_extract_playlist_id():
-    """Test playlist ID extraction"""
-    print("Testing playlist ID extraction...")
-    
-    test_cases = [
-        ("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M", "37i9dQZF1DXcBWIGoYBM5M"),
-        ("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", "37i9dQZF1DXcBWIGoYBM5M"),
-        ("37i9dQZF1DXcBWIGoYBM5M", "37i9dQZF1DXcBWIGoYBM5M")
-    ]
-    
-    for url, expected in test_cases:
-        result = extract_playlist_id(url)
-        assert result == expected, f"Failed for {url}: got {result}, expected {expected}"
-    
-    print("✓ Playlist ID extraction working correctly")
 
 def test_bingo_card_generation():
     """Test bingo card creation"""
@@ -128,10 +111,9 @@ def test_game_simulation():
     print("✓ Game simulation working correctly")
 
 if __name__ == "__main__":
-    print("Running Spotify Bingo App Tests\n" + "=" * 50)
+    print("Running Music Bingo App Tests\n" + "=" * 50)
     
     try:
-        test_extract_playlist_id()
         test_bingo_card_generation()
         test_unique_cards()
         test_bingo_win_detection()
