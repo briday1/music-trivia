@@ -537,17 +537,17 @@ def main():
                 with col2:
                     second_winner_round = st.slider(
                         "2nd Winner Round (2 lines)",
-                        min_value=first_winner_round + 1 if first_winner_round else 2,
+                        min_value=first_winner_round + 1,
                         max_value=100,
-                        value=min(20, (first_winner_round + 10) if first_winner_round else 20),
+                        value=min(20, first_winner_round + 10),
                         help="Minimum round for the second winner"
                     )
                 with col3:
                     third_winner_round = st.slider(
                         "3rd Winner Round (full card)",
-                        min_value=second_winner_round + 1 if second_winner_round else 3,
+                        min_value=second_winner_round + 1,
                         max_value=100,
-                        value=min(30, (second_winner_round + 10) if second_winner_round else 30),
+                        value=min(30, second_winner_round + 10),
                         help="Minimum round for the third winner"
                     )
     
@@ -718,7 +718,7 @@ def main():
         1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) and authorize with Spotify
         2. **Download CSV**: Click "Export" on your desired playlist to download a CSV file
         3. **Upload CSV**: Upload the CSV file using the file uploader above
-        4. **Configure Settings**: Use the sidebar to adjust the number of cards and card size
+        4. **Configure Settings**: Adjust the number of cards and card size in the Configuration section
         5. **Generate**: Click the "Generate Bingo Cards" button
         6. **Analyze**: Review the win analysis table to see which cards will win in which rounds
         7. **Print**: Use your browser's print function to print the bingo cards
