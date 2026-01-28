@@ -380,10 +380,26 @@ def generate_bingo_pdf(
         ]))
         
         elements.append(table)
-        elements.append(Spacer(1, 0.2*inch))
+        elements.append(Spacer(1, 0.1*inch))
         
-        # Add card index in bottom corner
+        # Add card index and game instructions at the bottom
         elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
+        elements.append(Spacer(1, 0.1*inch))
+        
+        # Add minimal game instructions at the bottom
+        instructions_style = ParagraphStyle(
+            'Instructions',
+            parent=styles['Normal'],
+            fontSize=7,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        instructions_text = (
+            "First place winner: One line (up/down, left/right). "
+            "Second place winner: Two lines. "
+            "Third place winner: Fill sheet"
+        )
+        elements.append(Paragraph(instructions_text, instructions_style))
         
         # Page break after each card (except the last)
         if card_idx < len(cards) - 1:
@@ -468,7 +484,7 @@ def main():
     
     1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) to export your Spotify playlist(s) to CSV
     2. **Upload CSV**: Upload the exported CSV file below
-    3. **Configure Settings**: Adjust card size, number of cards, and other options in the sidebar
+    3. **Configure Settings**: Adjust card size, number of cards, and other options below
     4. **Generate Cards**: Click "Generate Bingo Cards" to create your bingo game
     
     **Note:** This app works with CSV files exported from [Exportify](https://exportify.net/), which contains your Spotify playlist data.
@@ -481,17 +497,20 @@ def main():
         help="Upload a CSV file exported from https://exportify.net/"
     )
     
-    # Sidebar for configuration
-    st.sidebar.header("Configuration")
+    # Configuration section - moved from sidebar
+    st.divider()
+    st.subheader("⚙️ Configuration")
     
-    # Bingo game settings
-    st.sidebar.subheader("Bingo Settings")
-    num_cards = st.sidebar.slider("Number of Bingo Cards", min_value=1, max_value=100, value=10)
-    card_size = st.sidebar.slider("Card Size (NxN)", min_value=3, max_value=7, value=5)
+    # Bingo game settings in columns
+    col1, col2 = st.columns(2)
+    with col1:
+        num_cards = st.slider("Number of Bingo Cards", min_value=1, max_value=100, value=10)
+    with col2:
+        card_size = st.slider("Card Size (NxN)", min_value=3, max_value=7, value=5)
     
-    # Win guarantee settings
-    st.sidebar.subheader("Win Analysis")
-    analyze_wins = st.sidebar.checkbox("Analyze Win Probabilities", value=True)
+    # Win Analysis section
+    st.divider()
+    analyze_wins = st.checkbox("Analyze Win Probabilities", value=True)
     
     # Initialize round control variables
     use_round_control = False
@@ -501,43 +520,51 @@ def main():
     
     # Winner round controls
     if analyze_wins:
-        st.sidebar.markdown("**Winner Round Controls**")
-        st.sidebar.caption("Set target rounds for each winner (optional)")
-        
-        use_round_control = st.sidebar.checkbox("Control Winner Rounds", value=False)
-        
-        if use_round_control:
-            first_winner_round = st.sidebar.slider(
-                "1st Winner Round (1 line)",
-                min_value=1,
-                max_value=100,
-                value=10,
-                help="Minimum round for the first winner"
-            )
-            second_winner_round = st.sidebar.slider(
-                "2nd Winner Round (2 lines)",
-                min_value=first_winner_round + 1,
-                max_value=100,
-                value=min(20, first_winner_round + 10),
-                help="Minimum round for the second winner"
-            )
-            third_winner_round = st.sidebar.slider(
-                "3rd Winner Round (full card)",
-                min_value=second_winner_round + 1,
-                max_value=100,
-                value=min(30, second_winner_round + 10),
-                help="Minimum round for the third winner"
-            )
+        with st.expander("Winner Round Controls (Optional)"):
+            st.caption("Set target rounds for each winner")
+            use_round_control = st.checkbox("Control Winner Rounds", value=False)
+            
+            if use_round_control:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    first_winner_round = st.slider(
+                        "1st Winner Round (1 line)",
+                        min_value=1,
+                        max_value=100,
+                        value=10,
+                        help="Minimum round for the first winner"
+                    )
+                with col2:
+                    second_winner_round = st.slider(
+                        "2nd Winner Round (2 lines)",
+                        min_value=first_winner_round + 1 if first_winner_round else 2,
+                        max_value=100,
+                        value=min(20, (first_winner_round + 10) if first_winner_round else 20),
+                        help="Minimum round for the second winner"
+                    )
+                with col3:
+                    third_winner_round = st.slider(
+                        "3rd Winner Round (full card)",
+                        min_value=second_winner_round + 1 if second_winner_round else 3,
+                        max_value=100,
+                        value=min(30, (second_winner_round + 10) if second_winner_round else 30),
+                        help="Minimum round for the third winner"
+                    )
     
     # PDF Customization
-    st.sidebar.subheader("PDF Customization")
-    card_title = st.sidebar.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
+    st.divider()
+    with st.expander("PDF Customization (Optional)"):
+        card_title = st.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            logo_file = st.file_uploader("Upload Logo for Free Space (optional)", type=['png', 'jpg', 'jpeg'])
+        with col2:
+            logo_zoom = 1.0
+            if logo_file:
+                logo_zoom = st.slider("Logo Zoom", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
     
-    # Logo upload
-    logo_file = st.sidebar.file_uploader("Upload Logo for Free Space (optional)", type=['png', 'jpg', 'jpeg'])
-    logo_zoom = 1.0
-    if logo_file:
-        logo_zoom = st.sidebar.slider("Logo Zoom", min_value=0.5, max_value=2.0, value=1.0, step=0.1)
+    st.divider()
     
     if uploaded_file:
         if st.button("Generate Bingo Cards", type="primary"):
