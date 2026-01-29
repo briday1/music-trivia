@@ -386,6 +386,7 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
     - Place song at r2-1 on one of these lines
     - Fill both lines with songs from 0 to r2-2
     - Add blocker from songs[R..M-1]
+    - Place delay songs on non-center rows to prevent early completion
     - Fill rest from songs[0..R-1]
     """
     S = card_size * card_size - 1 if free_space else card_size * card_size
@@ -396,6 +397,7 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
     EARLY2 = songs[:r2 - 1]
     LATE = songs[R:M] if R < M else []
     EARLYR = songs[:R]
+    DELAY = songs[r2:R] if r2 < R else []  # Songs to delay line completion
     
     # Must have blocker songs for deterministic algorithm
     if not LATE:
@@ -459,6 +461,19 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
         pos = random.choice(off_lines)
         card_grid[pos[0]][pos[1]] = blocker
     
+    # Add delay songs to non-center rows to prevent early 2-line completion
+    # For each row except center, try to place a delay song
+    if DELAY:
+        for i in range(card_size):
+            if i == center:
+                continue  # Skip center row
+            available_cols = [j for j in range(card_size) if card_grid[i][j] is None]
+            if available_cols:
+                delay_song = random.choice(DELAY)
+                j = random.choice(available_cols)
+                card_grid[i][j] = delay_song
+                used_songs.add(delay_song)
+    
     # Fill remaining squares from EARLYR
     empty_squares = [(i, j) for i in range(card_size) for j in range(card_size) 
                      if card_grid[i][j] is None]
@@ -474,36 +489,66 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
     
     return card_grid
 
-def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: int, free_space: bool) -> List[List[str]]:
+def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: int, 
+                                   second_round: int, free_space: bool) -> List[List[str]]:
     """
-    Create remaining cards with blocker to prevent blackout by R.
+    Create remaining cards with blockers to prevent:
+    1. Blackout by round R
+    2. Getting 2 lines at or near the 2nd place target round
     
     Strategy:
-    - Add one blocker from songs[R..M-1]
-    - Fill rest from songs[0..R-1]
+    - Add one blocker from songs[R..M-1] to prevent early blackout
+    - Place "late" songs strategically in each row/column to delay 2-line completion
     """
     S = card_size * card_size - 1 if free_space else card_size * card_size
+    center = card_size // 2
     
     LATE = songs[R:M] if R < M else []
     EARLYR = songs[:R]
     
-    selected_songs = []
+    # Songs in the range [second_round, R) to delay line completion
+    delay_songs = songs[second_round + 2:R] if second_round + 2 < R else []
     
-    # Add blocker
+    card_grid = [[None for _ in range(card_size)] for _ in range(card_size)]
+    used_songs = set()
+    
+    # Set FREE space
+    if free_space:
+        card_grid[center][center] = "FREE SPACE"
+    
+    # Add blocker from LATE to prevent blackout
     if LATE:
-        selected_songs.append(random.choice(LATE))
+        blocker = random.choice(LATE)
+        used_songs.add(blocker)
+        i, j = random.randint(0, card_size-1), random.randint(0, card_size-1)
+        while card_grid[i][j] is not None:
+            i, j = random.randint(0, card_size-1), random.randint(0, card_size-1)
+        card_grid[i][j] = blocker
     
-    # Fill rest from EARLYR
-    available = [s for s in EARLYR if s not in selected_songs]
-    if len(available) >= S - len(selected_songs):
-        selected_songs.extend(random.sample(available, S - len(selected_songs)))
-    else:
-        selected_songs.extend(available)
-        while len(selected_songs) < S:
-            selected_songs.append(random.choice(EARLYR))
+    # For each row, place at least one delay song to prevent early line completion
+    if delay_songs:
+        for i in range(card_size):
+            delay_song = random.choice(delay_songs)
+            available_cols = [j for j in range(card_size) if card_grid[i][j] is None]
+            if available_cols:
+                j = random.choice(available_cols)
+                card_grid[i][j] = delay_song
+                used_songs.add(delay_song)
     
-    random.shuffle(selected_songs)
-    return _place_songs_on_card(selected_songs, card_size, free_space)
+    # Fill remaining squares from EARLYR
+    empty_squares = [(i, j) for i in range(card_size) for j in range(card_size) 
+                     if card_grid[i][j] is None]
+    
+    available_songs = [s for s in EARLYR if s not in used_songs]
+    random.shuffle(available_songs)
+    
+    for idx, (i, j) in enumerate(empty_squares):
+        if idx < len(available_songs):
+            card_grid[i][j] = available_songs[idx]
+        else:
+            card_grid[i][j] = random.choice(EARLYR)
+    
+    return card_grid
 
 def _place_songs_on_card(selected_songs: List[str], card_size: int, free_space: bool) -> List[List[str]]:
     """Helper to place a list of songs onto a card grid with FREE space."""
@@ -599,7 +644,7 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
     # Remaining cards: random with blockers
     for i in range(num_cards):
         if cards[i] is None:
-            cards[i] = create_other_card_with_blocker(songs, card_size, R, M, free_space)
+            cards[i] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
     
     return cards
 
@@ -734,16 +779,14 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
                 if check_full_card(card, called_songs):
                     milestones['full_card_round'] = round_num
         
-        # Check for place winners in order (1st, 2nd, 3rd)
-        for place in [1, 2, 3]:
+        # Check for 1st and 3rd place winners (keep existing logic)
+        for place in [1, 3]:
             # Skip if this place already has a winner
             if place_winners[place] is not None:
                 continue
             
             # Skip if we're not at the target round for this place yet
             if place == 1 and first_winner_round and round_num < first_winner_round:
-                continue
-            if place == 2 and second_winner_round and round_num < second_winner_round:
                 continue
             if place == 3 and third_winner_round and round_num < third_winner_round:
                 continue
@@ -761,6 +804,30 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
                 if has_won:
                     place_winners[place] = card_idx
                     break  # Only one winner per round per place
+        
+        # Special logic for 2nd place - find earliest 2-line achiever at or after target round
+        if place_winners[2] is None and (not second_winner_round or round_num >= second_winner_round):
+            earliest_2_lines = None
+            earliest_2_lines_card = None
+            
+            for card_idx, milestones in card_milestones.items():
+                # Skip if this card already won 1st place (no duplicate winners)
+                if card_idx == place_winners[1]:
+                    continue
+                
+                two_line_round = milestones['2_lines_round']
+                if two_line_round is not None:
+                    # Exclude cards that achieved before the target round (no earlier winners)
+                    if second_winner_round and two_line_round < second_winner_round:
+                        continue
+                    
+                    # Pick the earliest achiever at or after the target round
+                    if earliest_2_lines is None or two_line_round < earliest_2_lines:
+                        earliest_2_lines = two_line_round
+                        earliest_2_lines_card = card_idx
+            
+            if earliest_2_lines_card is not None:
+                place_winners[2] = earliest_2_lines_card
         
         # Continue simulation to track full card completion for all cards
         # (Don't stop early even if all three places have winners)
