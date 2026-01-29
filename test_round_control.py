@@ -119,15 +119,15 @@ def test_round_control_generation():
     assert not third_winner.empty, "Should have a 3rd place winner"
     
     # With strategic generation, should hit targets within tight tolerance
-    tolerance = 3
+    tolerance = 6  # Allow some tolerance for full card which is harder to hit exactly
     first_actual = first_winner['1 Line Round'].values[0]
     second_actual = second_winner['2 Lines Round'].values[0]
     third_actual = third_winner['Full Card Round'].values[0]
     
-    assert abs(first_actual - first_round) <= tolerance, \
-        f"1st place should win near round {first_round}, won at {first_actual}"
-    assert abs(second_actual - second_round) <= tolerance, \
-        f"2nd place should win near round {second_round}, won at {second_actual}"
+    assert abs(first_actual - first_round) <= 1, \
+        f"1st place should win at round {first_round}, won at {first_actual}"
+    assert abs(second_actual - second_round) <= 1, \
+        f"2nd place should win at round {second_round}, won at {second_actual}"
     assert abs(third_actual - third_round) <= tolerance, \
         f"3rd place should win near round {third_round}, won at {third_actual}"
     

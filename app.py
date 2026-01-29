@@ -114,7 +114,7 @@ def validate_round_targets(card_size: int, num_songs: int, first_round: Optional
     
     # Minimum rounds needed for each place
     min_first = card_size  # Need at least one full line
-    min_second = card_size + 1  # Need 2 lines minimum (one more than first)
+    min_second = card_size * 2  # Need 2 complete lines
     min_third = (card_size * card_size) - 1 if card_size % 2 == 1 else card_size * card_size  # Full card minus free space
     
     if first_round and first_round < min_first:
@@ -198,43 +198,45 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
     return cards
 
 def _create_1_line_winner_card(songs: List[str], card_size: int, target_round: int, free_space: bool) -> List[List[str]]:
-    """Create a card that will achieve 1 line at target_round."""
+    """Create a card that will achieve 1 line at EXACTLY target_round."""
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    # Strategy: Fill first row with songs from target_round-card_size+1 to target_round
-    # This ensures the row completes exactly at target_round
+    # Strategy: Fill first row with songs at indices [target_round-card_size, target_round-1]
+    # When songs are called in order, the row completes exactly at round target_round
     selected_songs = []
+    used_indices = set()
     
-    # First row: songs that complete at target round
-    row_start = max(0, target_round - card_size)
+    # First row: songs that make the row complete at exact target round
     for i in range(card_size):
-        idx = row_start + i
-        if idx < len(songs):
+        idx = target_round - card_size + i
+        if idx >= 0 and idx < len(songs):
             selected_songs.append(songs[idx])
+            used_indices.add(idx)
         else:
+            # Shouldn't happen with proper validation
             selected_songs.append(songs[i % len(songs)])
+            used_indices.add(i % len(songs))
     
-    # Fill remaining squares with later songs to avoid accidental early column completions
-    later_start = target_round
-    available_later = [songs[i % len(songs)] for i in range(later_start, later_start + num_songs_needed)]
+    # Fill remaining squares with songs uniformly distributed across playlist
+    # avoiding the songs already used
+    remaining_needed = num_songs_needed - len(selected_songs)
     
-    remaining_needed = num_songs_needed - card_size
-    # Take songs that haven't been used yet
-    used = set(selected_songs)
-    for song in available_later:
-        if song not in used and len(selected_songs) < num_songs_needed:
-            selected_songs.append(song)
-            used.add(song)
+    # Create list of available indices
+    available_indices = [i for i in range(len(songs)) if i not in used_indices]
     
-    # Fill any remaining with random songs
-    while len(selected_songs) < num_songs_needed:
-        song = random.choice(songs)
-        if song not in used:
-            selected_songs.append(song)
-            used.add(song)
+    # Uniformly sample from available indices
+    if len(available_indices) >= remaining_needed:
+        sample_indices = random.sample(available_indices, remaining_needed)
+    else:
+        # If not enough, use all available and repeat if needed
+        sample_indices = available_indices * ((remaining_needed // len(available_indices)) + 1)
+        sample_indices = sample_indices[:remaining_needed]
     
-    # Build the card with first row intact, rest shuffled
+    for idx in sample_indices:
+        selected_songs.append(songs[idx])
+    
+    # Build the card with first row in correct positions, rest distributed
     card = []
     song_idx = 0
     center = card_size // 2
@@ -252,40 +254,44 @@ def _create_1_line_winner_card(songs: List[str], card_size: int, target_round: i
     return card
 
 def _create_2_lines_winner_card(songs: List[str], card_size: int, target_round: int, free_space: bool) -> List[List[str]]:
-    """Create a card that will achieve 2 lines at target_round."""
+    """Create a card that will achieve 2 lines at EXACTLY target_round."""
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
     # Strategy: Fill first two rows with songs that complete at target round
+    # Second row completes at target_round
     selected_songs = []
+    used_indices = set()
     
-    # Two rows worth of songs
-    row_start = max(0, target_round - card_size * 2)
-    for i in range(min(card_size * 2, num_songs_needed)):
-        idx = row_start + i
-        if idx < len(songs):
+    # First two rows: songs that make 2 rows complete at exact target round
+    # First row completes at round (target_round - card_size)
+    # Second row completes at round target_round
+    start_idx = target_round - (card_size * 2)
+    
+    for i in range(card_size * 2):
+        idx = start_idx + i
+        if idx >= 0 and idx < len(songs):
             selected_songs.append(songs[idx])
+            used_indices.add(idx)
         else:
-            selected_songs.append(songs[i % len(songs)])
+            # Fallback for edge cases
+            fallback_idx = i % len(songs)
+            selected_songs.append(songs[fallback_idx])
+            used_indices.add(fallback_idx)
     
-    # Fill remaining with later songs
+    # Fill remaining with songs uniformly distributed
     remaining_needed = num_songs_needed - len(selected_songs)
-    used = set(selected_songs)
-    later_start = target_round
     
-    for i in range(remaining_needed):
-        idx = later_start + i
-        song = songs[idx % len(songs)]
-        if song not in used:
-            selected_songs.append(song)
-            used.add(song)
-        else:
-            # Find unused song
-            for s in songs[later_start:]:
-                if s not in used:
-                    selected_songs.append(s)
-                    used.add(s)
-                    break
+    available_indices = [i for i in range(len(songs)) if i not in used_indices]
+    
+    if len(available_indices) >= remaining_needed:
+        sample_indices = random.sample(available_indices, remaining_needed)
+    else:
+        sample_indices = available_indices * ((remaining_needed // len(available_indices)) + 1)
+        sample_indices = sample_indices[:remaining_needed]
+    
+    for idx in sample_indices:
+        selected_songs.append(songs[idx])
     
     # Build card
     card = []
@@ -301,6 +307,7 @@ def _create_2_lines_winner_card(songs: List[str], card_size: int, target_round: 
                 if song_idx < len(selected_songs):
                     row.append(selected_songs[song_idx])
                 else:
+                    # Fallback
                     row.append(songs[song_idx % len(songs)])
                 song_idx += 1
         card.append(row)
@@ -308,36 +315,39 @@ def _create_2_lines_winner_card(songs: List[str], card_size: int, target_round: 
     return card
 
 def _create_full_card_winner_card(songs: List[str], card_size: int, target_round: int, free_space: bool) -> List[List[str]]:
-    """Create a card that will achieve full card at target_round."""
+    """Create a card that will achieve full card at EXACTLY target_round."""
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    # Strategy: Use songs that will be called late in the target range
-    # Start from target_round and work backwards to fill the card
-    # This ensures the last square is filled at target_round
+    # Strategy: Use songs from indices 0 to target_round-1 (exactly)
+    # The last song on the card will be called at round target_round, completing the card
+    # We need exactly num_songs_needed unique songs from first target_round songs
     
     selected_songs = []
-    used_songs = set()
+    used_indices = set()
     
-    # Take unique songs from target_round backwards
-    for i in range(target_round - 1, -1, -1):
+    # Take songs from the range [0, target_round) to ensure completion at target_round
+    # Try to use unique songs first
+    for i in range(target_round):
         if len(selected_songs) >= num_songs_needed:
             break
-        song = songs[i % len(songs)]
-        if song not in used_songs:
-            selected_songs.append(song)
-            used_songs.add(song)
+        if i < len(songs) and i not in used_indices:
+            selected_songs.append(songs[i])
+            used_indices.add(i)
     
-    # If we don't have enough unique songs, fill with earlier songs
+    # If we still need more songs (because of duplicates in early songs)
+    # use later songs but ensure they're called within target_round
     idx = 0
     while len(selected_songs) < num_songs_needed:
-        song = songs[idx % len(songs)]
-        if song not in used_songs:
-            selected_songs.append(song)
-            used_songs.add(song)
+        if idx < target_round and idx < len(songs):
+            # Allow duplicates if necessary
+            selected_songs.append(songs[idx % len(songs)])
+        else:
+            # This shouldn't happen with proper validation
+            selected_songs.append(songs[len(selected_songs) % len(songs)])
         idx += 1
     
-    # Shuffle to avoid patterns
+    # Shuffle to avoid obvious patterns
     random.shuffle(selected_songs)
     
     # Build card
@@ -364,22 +374,44 @@ def _card_wins_too_early(card: List[List[str]], songs: List[str],
     Check if a card would win before any of the designated winner cards.
     Returns True if the card wins too early and should be regenerated.
     """
-    # Find the earliest target round
+    # Find the target rounds for each place
     if not winner_positions:
         return False
     
-    earliest_target = min(target_round for _, target_round in winner_positions.values())
+    place_targets = {}
+    for _, (place, target_round) in winner_positions.items():
+        place_targets[place] = target_round
     
-    # Simulate calling songs and check if this card wins before earliest_target
+    # Find the maximum target to check up to
+    max_target = max(target_round for _, target_round in winner_positions.values())
+    
+    # Simulate calling songs and check if this card wins any condition before the target for that condition
     called_songs = set()
     
-    for round_num, song in enumerate(songs[:earliest_target], 1):
+    for round_num, song in enumerate(songs[:max_target], 1):
         called_songs.add(song)
         
-        # Check for 1 line
-        line_count, _ = count_complete_lines(card, called_songs)
-        if line_count >= 1 and round_num < earliest_target:
-            return True  # Wins too early
+        # Only check conditions that have targets set
+        line_count = None  # Cache to avoid calculating twice
+        
+        # Check for 1 line (1st place condition) if 1st place has a target
+        if 1 in place_targets and round_num < place_targets[1]:
+            if line_count is None:
+                line_count, _ = count_complete_lines(card, called_songs)
+            if line_count >= 1:
+                return True  # Gets 1 line too early
+        
+        # Check for 2 lines (2nd place condition) if 2nd place has a target
+        if 2 in place_targets and round_num < place_targets[2]:
+            if line_count is None:
+                line_count, _ = count_complete_lines(card, called_songs)
+            if line_count >= 2:
+                return True  # Gets 2 lines too early
+        
+        # Check for full card (3rd place condition) if 3rd place has a target
+        if 3 in place_targets and round_num < place_targets[3]:
+            if check_full_card(card, called_songs):
+                return True  # Gets full card too early
     
     return False
 
@@ -576,7 +608,7 @@ def calculate_win_probability(cards: List[List[List[str]]], songs: List[str],
     for _ in range(num_simulations):
         results = simulate_bingo_game(cards, songs)
         card_result = results[results['Card Index'] == target_card + 1]
-        if not card_result.empty and card_result['Place'].values[0] == 1:
+        if not card_result.empty and card_result['Won Place'].values[0] == 1:
             wins += 1
     
     return wins / num_simulations
