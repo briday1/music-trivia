@@ -967,7 +967,8 @@ def generate_bingo_pdf(
     elements.append(Paragraph(
         "<b>Instructions:</b> This table shows when each card achieves milestones. "
         "Highlighted rows show which card won 1st (1 line), 2nd (2 lines), and 3rd (full card) place. "
-        "<b>Important:</b> Once a card wins a place, it is ineligible to win another place.",
+        "<b>Important:</b> Once a card wins a place, it is ineligible to win another place. "
+        "Each card can only win once.",
         styles['Normal']
     ))
     elements.append(Spacer(1, 0.3*inch))
