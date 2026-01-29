@@ -762,9 +762,8 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
                     place_winners[place] = card_idx
                     break  # Only one winner per round per place
         
-        # Stop if all three places have winners
-        if all(place_winners[p] is not None for p in [1, 2, 3]):
-            break
+        # Continue simulation to track full card completion for all cards
+        # (Don't stop early even if all three places have winners)
     
     # Build results DataFrame with all card milestones
     results = []
@@ -942,7 +941,8 @@ def generate_bingo_pdf(
         instructions_text = (
             "First place winner: One line (up/down, left/right). "
             "Second place winner: Two lines. "
-            "Third place winner: Fill sheet"
+            "Third place winner: Fill sheet. "
+            "Each card can only win once."
         )
         elements.append(Paragraph(instructions_text, instructions_style))
         
