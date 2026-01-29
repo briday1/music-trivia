@@ -81,30 +81,40 @@ def create_bingo_card(songs: List[str], card_size: int = 5, free_space: bool = T
     
     return card
 
-def create_biased_bingo_card(songs: List[str], card_size: int, target_round: int, free_space: bool = True) -> List[List[str]]:
+def create_card_for_full_completion_at_round(songs: List[str], card_size: int, target_round: int, free_space: bool = True) -> List[List[str]]:
     """
-    Create a bingo card biased toward songs in a specific range to help hit target milestones.
+    Create a card that will complete (full card) at exactly target_round.
     
-    Samples more heavily from songs that would be called by target_round.
+    Uses strategic song selection to ensure the card contains songs that will be
+    called by target_round, with the critical song at position (target_round-1).
     """
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    # Determine sampling range - favor songs from [0, target_round * 1.5]
-    max_index = min(len(songs), int(target_round * 1.5))
-    biased_pool = songs[:max_index]
+    # To complete at round N, we need songs from indices [0, N-1]
+    # And importantly, we MUST include the song at index (N-1) to ensure completion at round N
+    if target_round < num_songs_needed:
+        # Not enough songs will be called by target_round to fill the card
+        # This should have been caught by validation
+        target_round = num_songs_needed
     
-    if len(biased_pool) < num_songs_needed:
-        # If not enough in biased pool, add more from full list
-        biased_pool = songs
+    # Select songs from [0, target_round-1]
+    available_songs = songs[:target_round]
     
-    # Randomly select from biased pool
-    selected_songs = random.sample(biased_pool, min(num_songs_needed, len(biased_pool)))
+    # Randomly sample the needed songs from this range
+    if len(available_songs) >= num_songs_needed:
+        selected_songs = random.sample(available_songs, num_songs_needed)
+    else:
+        # Not enough unique songs, use all and allow duplicates
+        selected_songs = list(available_songs)
+        while len(selected_songs) < num_songs_needed:
+            selected_songs.append(random.choice(available_songs))
     
-    # If we need more, add from full list
-    if len(selected_songs) < num_songs_needed:
-        remaining = [s for s in songs if s not in selected_songs]
-        selected_songs.extend(random.sample(remaining, num_songs_needed - len(selected_songs)))
+    # Ensure the song at index (target_round-1) is included
+    critical_song = songs[target_round - 1] if target_round <= len(songs) else songs[-1]
+    if critical_song not in selected_songs:
+        # Replace a random song with the critical one
+        selected_songs[random.randint(0, len(selected_songs) - 1)] = critical_song
     
     # Shuffle to avoid patterns
     random.shuffle(selected_songs)
@@ -219,133 +229,71 @@ def get_card_milestones(card: List[List[str]], songs: List[str]) -> Tuple[Option
 
 def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int, 
                                first_round: Optional[int], second_round: Optional[int], 
-                               third_round: Optional[int], max_attempts: int = 50000,
+                               third_round: Optional[int], max_attempts: int = 10000,
                                free_space: bool = True) -> Optional[List[List[List[str]]]]:
     """
-    Generate cards with guaranteed winners at target rounds using generate-and-test approach.
+    Generate cards with controlled 3rd place (full card) winner.
     
-    For each winner card, randomly generate cards and test their actual milestone rounds
-    until we find one that meets the target. Then generate remaining cards ensuring they
-    don't interfere with the designated winners.
+    Simplified approach:
+    - Only control when 3rd place (full card) winner occurs
+    - 1st and 2nd place happen naturally from random cards
+    - Ensure no card completes before the target round for 3rd place
     
     Args:
         songs: List of all songs
         num_cards: Number of cards to generate
         card_size: Size of each card (NxN)
-        first_round: Target round for 1st place winner (1 line)
-        second_round: Target round for 2nd place winner (2 lines)
+        first_round: Not used (kept for compatibility)
+        second_round: Not used (kept for compatibility)
         third_round: Target round for 3rd place winner (full card)
-        max_attempts: Maximum attempts to generate each card (default 50000)
+        max_attempts: Maximum attempts per card
         free_space: Whether to include a free space
     
     Returns:
         List of cards, or None if unable to generate valid cards
     """
-    # Randomly select positions for winning cards
-    winner_positions = {}
-    available_positions = list(range(num_cards))
-    random.shuffle(available_positions)
-    
-    # Assign positions for winner cards
-    first_place_pos = available_positions.pop() if first_round else None
-    second_place_pos = available_positions.pop() if second_round else None
-    third_place_pos = available_positions.pop() if third_round else None
+    # Randomly select position for 3rd place winner card
+    third_place_pos = random.randint(0, num_cards - 1) if third_round else None
     
     # Initialize cards list
     cards = [None] * num_cards
     
-    # Track milestone rounds of winner cards for constraint checking
-    first_place_1line_round = None
-    second_place_2lines_round = None
-    
-    # Generate 1st place winner (1 line at first_round)
-    if first_round:
-        for attempt in range(max_attempts):
-            candidate = create_bingo_card(songs, card_size, free_space)
-            one_line, two_lines, full_card = get_card_milestones(candidate, songs)
-            
-            if one_line == first_round:
-                cards[first_place_pos] = candidate
-                first_place_1line_round = one_line
-                break
-        
-        if cards[first_place_pos] is None:
-            return None  # Failed to generate 1st place winner
-    
-    # Generate 2nd place winner (2 lines at second_round, 1 line after first_round)
-    if second_round:
-        for attempt in range(max_attempts):
-            candidate = create_bingo_card(songs, card_size, free_space)
-            one_line, two_lines, full_card = get_card_milestones(candidate, songs)
-            
-            # Must get 2 lines at second_round
-            if two_lines != second_round:
-                continue
-            
-            # If 1st place exists, must get 1 line AFTER 1st place winner
-            if first_round and one_line is not None and one_line <= first_place_1line_round:
-                continue
-            
-            cards[second_place_pos] = candidate
-            second_place_2lines_round = two_lines
-            break
-        
-        if cards[second_place_pos] is None:
-            return None  # Failed to generate 2nd place winner
-    
-    # Generate 3rd place winner (full card at third_round, constraints on earlier milestones)
+    # Generate 3rd place winner card (full card at third_round)
     if third_round:
         for attempt in range(max_attempts):
-            # Use biased generation for full card to increase chances of hitting early round
-            candidate = create_biased_bingo_card(songs, card_size, third_round, free_space)
+            # Create a card that completes at exactly third_round
+            candidate = create_card_for_full_completion_at_round(songs, card_size, third_round, free_space)
             one_line, two_lines, full_card = get_card_milestones(candidate, songs)
             
-            # Must get full card at third_round
-            if full_card != third_round:
-                continue
-            
-            # If 1st place exists, must get 1 line AFTER 1st place winner
-            if first_round and one_line is not None and one_line <= first_place_1line_round:
-                continue
-            
-            # If 2nd place exists, must get 2 lines AFTER 2nd place winner
-            if second_round and two_lines is not None and two_lines <= second_place_2lines_round:
-                continue
-            
-            cards[third_place_pos] = candidate
-            break
+            # Verify it completes at third_round
+            if full_card == third_round:
+                cards[third_place_pos] = candidate
+                break
         
         if cards[third_place_pos] is None:
             return None  # Failed to generate 3rd place winner
     
-    # Generate remaining non-winner cards
+    # Generate all other cards, ensuring they don't complete before third_round
     for i in range(num_cards):
         if cards[i] is not None:
-            continue  # Already a winner card
+            continue  # Already the 3rd place winner card
         
-        for attempt in range(max_attempts):
-            candidate = create_bingo_card(songs, card_size, free_space)
-            one_line, two_lines, full_card = get_card_milestones(candidate, songs)
+        if third_round:
+            # Generate cards that don't complete too early
+            for attempt in range(max_attempts):
+                candidate = create_bingo_card(songs, card_size, free_space)
+                one_line, two_lines, full_card = get_card_milestones(candidate, songs)
+                
+                # Card must not complete before third_round
+                if full_card is None or full_card >= third_round:
+                    cards[i] = candidate
+                    break
             
-            # Card should not win any of the target conditions before the targets
-            interferes = False
-            
-            if first_round and one_line is not None and one_line < first_round:
-                interferes = True
-            
-            if second_round and two_lines is not None and two_lines < second_round:
-                interferes = True
-            
-            if third_round and full_card is not None and full_card < third_round:
-                interferes = True
-            
-            if not interferes:
-                cards[i] = candidate
-                break
-        
-        if cards[i] is None:
-            # If we can't generate a non-interfering card, just use a random one
-            # This is better than failing completely
+            if cards[i] is None:
+                # If we can't find one, just use a random card
+                cards[i] = create_bingo_card(songs, card_size, free_space)
+        else:
+            # No constraint, just generate random
             cards[i] = create_bingo_card(songs, card_size, free_space)
     
     return cards
