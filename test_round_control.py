@@ -118,20 +118,19 @@ def test_round_control_generation():
     assert not second_winner.empty, "Should have a 2nd place winner"
     assert not third_winner.empty, "Should have a 3rd place winner"
     
-    # With strategic generation, should hit targets within tight tolerance
-    tolerance = 6  # Allow some tolerance for full card which is harder to hit exactly
+    # With strategic generation, should hit targets exactly
     first_actual = first_winner['1 Line Round'].values[0]
     second_actual = second_winner['2 Lines Round'].values[0]
     third_actual = third_winner['Full Card Round'].values[0]
     
-    assert abs(first_actual - first_round) <= 1, \
-        f"1st place should win at round {first_round}, won at {first_actual}"
-    assert abs(second_actual - second_round) <= 1, \
-        f"2nd place should win at round {second_round}, won at {second_actual}"
-    assert abs(third_actual - third_round) <= tolerance, \
-        f"3rd place should win near round {third_round}, won at {third_actual}"
+    assert first_actual == first_round, \
+        f"1st place must win at exactly round {first_round}, won at {first_actual}"
+    assert second_actual == second_round, \
+        f"2nd place must win at exactly round {second_round}, won at {second_actual}"
+    assert third_actual == third_round, \
+        f"3rd place must win at exactly round {third_round}, won at {third_actual}"
     
-    print(f"✓ Cards generated with targets: 1st={first_actual}, 2nd={second_actual}, 3rd={third_actual}")
+    print(f"✓ Cards generated with exact targets: 1st={first_actual}, 2nd={second_actual}, 3rd={third_actual}")
 
 def test_winning_cards_shuffled():
     """Test that winning card positions are randomized"""

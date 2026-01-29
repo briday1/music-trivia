@@ -254,30 +254,44 @@ def _create_1_line_winner_card(songs: List[str], card_size: int, target_round: i
     return card
 
 def _create_2_lines_winner_card(songs: List[str], card_size: int, target_round: int, free_space: bool) -> List[List[str]]:
-    """Create a card that will achieve 2 lines at EXACTLY target_round."""
+    """Create a card that will achieve 2 lines at EXACTLY target_round.
+    
+    The card must include the song at index (target_round-1) to ensure the 2nd line
+    completes exactly when that song is called.
+    """
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    # Strategy: Fill first two rows with songs that complete at target round
-    # Second row completes at target_round
+    # CRITICAL: Must include the song at index (target_round - 1)
+    # This ensures the 2nd line completes exactly at target_round
+    target_song_idx = target_round - 1
+    
     selected_songs = []
     used_indices = set()
     
-    # First two rows: songs that make 2 rows complete at exact target round
-    # First row completes at round (target_round - card_size)
-    # Second row completes at round target_round
-    start_idx = target_round - (card_size * 2)
+    # First, add the critical song
+    if target_song_idx < len(songs):
+        selected_songs.append(songs[target_song_idx])
+        used_indices.add(target_song_idx)
     
-    for i in range(card_size * 2):
-        idx = start_idx + i
-        if idx >= 0 and idx < len(songs):
+    # Fill first two rows with songs from range, ensuring we span to target_round
+    # Start from (target_round - card_size*2) to cover the range needed for 2 lines
+    start_idx = max(0, target_round - (card_size * 2))
+    
+    for i in range(start_idx, target_round):
+        if len(selected_songs) >= card_size * 2:
+            break
+        if i < len(songs) and i not in used_indices:
+            selected_songs.append(songs[i])
+            used_indices.add(i)
+    
+    # Fill any remaining squares in first two rows
+    idx = 0
+    while len(selected_songs) < card_size * 2:
+        if idx < len(songs) and idx not in used_indices:
             selected_songs.append(songs[idx])
             used_indices.add(idx)
-        else:
-            # Fallback for edge cases
-            fallback_idx = i % len(songs)
-            selected_songs.append(songs[fallback_idx])
-            used_indices.add(fallback_idx)
+        idx += 1
     
     # Fill remaining with songs uniformly distributed
     remaining_needed = num_songs_needed - len(selected_songs)
@@ -315,19 +329,32 @@ def _create_2_lines_winner_card(songs: List[str], card_size: int, target_round: 
     return card
 
 def _create_full_card_winner_card(songs: List[str], card_size: int, target_round: int, free_space: bool) -> List[List[str]]:
-    """Create a card that will achieve full card at EXACTLY target_round."""
+    """Create a card that will achieve full card at EXACTLY target_round.
+    
+    The card MUST include the song at index (target_round-1) to ensure it completes
+    exactly when that song is called, not before.
+    """
     num_squares = card_size * card_size
     num_songs_needed = num_squares - 1 if free_space and card_size % 2 == 1 else num_squares
     
-    # Strategy: Use songs from indices 0 to target_round-1 (exactly)
-    # The last song on the card will be called at round target_round, completing the card
-    # We need exactly num_songs_needed unique songs from first target_round songs
+    # CRITICAL: Must include the song at index (target_round - 1)
+    # This is the song that will be called at round target_round, completing the card
+    target_song_idx = target_round - 1
     
     selected_songs = []
     used_indices = set()
     
-    # Take songs from the range [0, target_round) to ensure completion at target_round
-    # Try to use unique songs first
+    # First, add the critical song that ensures completion at target_round
+    if target_song_idx < len(songs):
+        selected_songs.append(songs[target_song_idx])
+        used_indices.add(target_song_idx)
+    else:
+        # Shouldn't happen with proper validation
+        selected_songs.append(songs[target_song_idx % len(songs)])
+        used_indices.add(target_song_idx % len(songs))
+    
+    # Fill remaining squares with songs from indices [0, target_round-1]
+    # Use unique songs to ensure no duplicates complete it early
     for i in range(target_round):
         if len(selected_songs) >= num_songs_needed:
             break
@@ -335,17 +362,17 @@ def _create_full_card_winner_card(songs: List[str], card_size: int, target_round
             selected_songs.append(songs[i])
             used_indices.add(i)
     
-    # If we still need more songs (because of duplicates in early songs)
-    # use later songs but ensure they're called within target_round
+    # If we still need more songs, take from earlier in the range
+    # This should rarely happen with proper validation
     idx = 0
     while len(selected_songs) < num_songs_needed:
-        if idx < target_round and idx < len(songs):
-            # Allow duplicates if necessary
-            selected_songs.append(songs[idx % len(songs)])
-        else:
-            # This shouldn't happen with proper validation
-            selected_songs.append(songs[len(selected_songs) % len(songs)])
+        if idx < len(songs) and idx not in used_indices:
+            selected_songs.append(songs[idx])
+            used_indices.add(idx)
         idx += 1
+        if idx >= len(songs):
+            # If we've exhausted all songs, allow duplicates
+            selected_songs.append(songs[len(selected_songs) % len(songs)])
     
     # Shuffle to avoid obvious patterns
     random.shuffle(selected_songs)
