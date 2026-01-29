@@ -677,7 +677,7 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
             cards[i] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
     
     # Validate and regenerate cards that achieve 2 lines before the target round
-    max_regeneration_attempts = 100
+    max_regeneration_attempts = 5000
     for attempt in range(max_regeneration_attempts):
         # Simulate to check when each card achieves 2 lines
         called_songs = set()
