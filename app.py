@@ -383,10 +383,9 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
     
     Strategy:
     - Use both center row AND center column (share FREE center)
-    - Place song at r2-1 on one of these lines
-    - Fill both lines with songs from 0 to r2-2
+    - Ensure BOTH lines complete at round r2 by placing late songs strategically
     - Add blocker from songs[R..M-1]
-    - Place delay songs on non-center rows to prevent early completion
+    - Place delay songs on other rows/columns to prevent early completion
     - Fill rest from songs[0..R-1]
     """
     S = card_size * card_size - 1 if free_space else card_size * card_size
@@ -411,45 +410,67 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
     if free_space:
         card_grid[center][center] = "FREE SPACE"
     
-    # Collect center row and column squares (excluding FREE center)
-    line_squares = []
-    # Center row
-    for j in range(card_size):
-        if not (free_space and j == center):
-            line_squares.append((center, j))
-    # Center column (skip center to avoid duplicate)
-    for i in range(card_size):
-        if i != center:
-            line_squares.append((i, center))
+    # Strategy: Fill center row and center column separately to ensure both complete at r2
     
-    # Total: 2(N-1) squares for free space case
-    total_line_squares = len(line_squares)
-    
-    # Place AT_R2 on one of these squares
-    line_songs = [AT_R2]
+    # Center row: Fill with songs from EARLY2, ensuring the latest is from near r2
+    center_row_songs = [AT_R2]  # This ensures completion at round r2
     used_songs.add(AT_R2)
     
-    # Fill rest with songs from EARLY2
-    available_early2 = [s for s in EARLY2 if s not in used_songs]
-    needed = total_line_squares - 1
-    
-    if len(available_early2) >= needed:
-        line_songs.extend(random.sample(available_early2, needed))
+    # Fill rest of center row with songs from early part of EARLY2
+    available = [s for s in EARLY2 if s not in used_songs]
+    needed = card_size - 2 if free_space else card_size - 1  # -1 for AT_R2, -1 for FREE if present
+    if len(available) >= needed:
+        center_row_songs.extend(random.sample(available, needed))
     else:
-        line_songs.extend(available_early2)
-        # Pad from EARLYR if needed
-        while len(line_songs) < total_line_squares:
-            available = [s for s in EARLYR if s not in used_songs and s not in line_songs]
+        center_row_songs.extend(available)
+        while len(center_row_songs) < (card_size - 1 if free_space else card_size):
+            center_row_songs.append(random.choice(EARLY2))
+    
+    used_songs.update(center_row_songs)
+    random.shuffle(center_row_songs)
+    
+    # Place center row songs
+    col_idx = 0
+    for song in center_row_songs:
+        if free_space and col_idx == center:
+            col_idx += 1
+        card_grid[center][col_idx] = song
+        col_idx += 1
+    
+    # Center column: Fill with songs from EARLY2, ensuring latest is from near r2
+    # Pick a late song from EARLY2 that's not already used
+    late_early2 = [s for s in EARLY2[r2-5:r2-1] if s not in used_songs]  # Last few songs before r2
+    if late_early2:
+        col_late_song = random.choice(late_early2)
+    else:
+        col_late_song = random.choice([s for s in EARLY2 if s not in used_songs])
+    
+    center_col_songs = [col_late_song]
+    used_songs.add(col_late_song)
+    
+    # Fill rest of center column
+    available = [s for s in EARLY2 if s not in used_songs]
+    needed = card_size - 2 if free_space else card_size - 1  # -1 for col_late_song, -1 for FREE/center overlap
+    if len(available) >= needed:
+        center_col_songs.extend(random.sample(available, needed))
+    else:
+        center_col_songs.extend(available)
+        while len(center_col_songs) < (card_size - 1 if free_space else card_size - 1):
             if available:
-                line_songs.append(random.choice(available))
+                center_col_songs.append(random.choice(available))
             else:
-                line_songs.append(random.choice(EARLYR))
+                center_col_songs.append(random.choice(EARLY2))
     
-    used_songs.update(line_songs)
-    random.shuffle(line_songs)
+    used_songs.update(center_col_songs)
+    random.shuffle(center_col_songs)
     
-    for idx, (i, j) in enumerate(line_squares[:len(line_songs)]):
-        card_grid[i][j] = line_songs[idx]
+    # Place center column songs (skip center row intersection)
+    row_idx = 0
+    for song in center_col_songs:
+        if row_idx == center:
+            row_idx += 1  # Skip center (already filled by center row or FREE)
+        card_grid[row_idx][center] = song
+        row_idx += 1
     
     # Add blocker from LATE (NOT on center row or column) - REQUIRED
     blocker = random.choice(LATE)
@@ -461,12 +482,11 @@ def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M
         pos = random.choice(off_lines)
         card_grid[pos[0]][pos[1]] = blocker
     
-    # Add delay songs to non-center rows to prevent early 2-line completion
-    # For each row except center, try to place a delay song
+    # Add delay songs to other rows/columns to prevent early 2-line completion
     if DELAY:
         for i in range(card_size):
             if i == center:
-                continue  # Skip center row
+                continue
             available_cols = [j for j in range(card_size) if card_grid[i][j] is None]
             if available_cols:
                 delay_song = random.choice(DELAY)
