@@ -182,6 +182,11 @@ def validate_round_targets(card_size: int, num_songs: int, first_round: Optional
     if any([first_round, second_round, third_round]) and max(filter(None, [first_round, second_round, third_round])) > num_songs:
         return False, f"Target rounds exceed number of songs ({num_songs})"
     
+    # For deterministic algorithm: need blocker songs after R
+    # This ensures other cards can't blackout by round R
+    if third_round and third_round >= num_songs:
+        return False, f"3rd place round ({third_round}) must be less than total songs ({num_songs}) to allow blocker songs"
+    
     return True, None
 
 def get_card_milestones(card: List[List[str]], songs: List[str]) -> Tuple[Optional[int], Optional[int], Optional[int]]:
@@ -227,74 +232,354 @@ def get_card_milestones(card: List[List[str]], songs: List[str]) -> Tuple[Option
     
     return one_line_round, two_lines_round, full_card_round
 
+def create_card_A_blackout(songs: List[str], card_size: int, R: int, free_space: bool) -> List[List[str]]:
+    """
+    Create Card A: Blackout winner at exactly round R.
+    
+    Strategy:
+    - Include song at index R-1 (will be called at round R)
+    - Fill remaining S-1 squares with songs from indices 0 to R-2
+    - Card completes when song[R-1] is called at round R
+    """
+    S = card_size * card_size - 1 if free_space else card_size * card_size
+    
+    # EARLYR = songs[0..R-2], AT_R = songs[R-1]
+    AT_R = songs[R - 1]
+    EARLYR = songs[:R - 1]
+    
+    # Build set of S songs: AT_R + (S-1) from EARLYR
+    if len(EARLYR) < S - 1:
+        # Not enough early songs, use what we have
+        selected_songs = [AT_R] + EARLYR
+        # Pad if needed
+        while len(selected_songs) < S:
+            selected_songs.append(EARLYR[len(selected_songs) % len(EARLYR)])
+    else:
+        # Sample S-1 songs from EARLYR
+        selected_songs = [AT_R] + random.sample(EARLYR, S - 1)
+    
+    # Shuffle to avoid patterns
+    random.shuffle(selected_songs)
+    
+    # Place into grid
+    return _place_songs_on_card(selected_songs, card_size, free_space)
+
+def create_card_B_one_line(songs: List[str], card_size: int, r1: int, R: int, M: int, free_space: bool) -> List[List[str]]:
+    """
+    Create Card B: 1-line winner by round r1 (with blocker to prevent blackout by R).
+    
+    Strategy:
+    - Use center row (benefits from FREE center)
+    - Place song at r1-1 on center row
+    - Fill rest of center row with songs from 0 to r1-2
+    - Add one blocker from songs[R..M-1] to prevent blackout
+    - Fill remaining squares from songs[0..R-1]
+    """
+    S = card_size * card_size - 1 if free_space else card_size * card_size
+    center = card_size // 2
+    
+    # Songs buckets
+    AT_R1 = songs[r1 - 1] if r1 <= len(songs) else songs[-1]
+    EARLY1 = songs[:r1 - 1]
+    LATE = songs[R:M] if R < M else []
+    EARLYR = songs[:R]
+    
+    # Must have blocker songs for deterministic algorithm
+    if not LATE:
+        raise ValueError(f"Need blocker songs: R={R} must be < M={M}")
+    
+    # Build card grid
+    card_grid = [[None for _ in range(card_size)] for _ in range(card_size)]
+    used_songs = set()
+    
+    # Set FREE space
+    if free_space:
+        card_grid[center][center] = "FREE SPACE"
+    
+    # Fill center row (except FREE center)
+    center_row_squares = []
+    for j in range(card_size):
+        if free_space and j == center:
+            continue  # FREE space
+        center_row_squares.append((center, j))
+    
+    # Need k = N-1 songs for center row (or N if no free space in that row)
+    k = len(center_row_squares)
+    
+    # Place AT_R1 on center row
+    row_songs = [AT_R1]
+    used_songs.add(AT_R1)
+    
+    # Fill rest of center row with songs from EARLY1
+    available_early1 = [s for s in EARLY1 if s not in used_songs]
+    if len(available_early1) >= k - 1:
+        row_songs.extend(random.sample(available_early1, k - 1))
+    else:
+        row_songs.extend(available_early1)
+        # Pad if needed from EARLYR
+        while len(row_songs) < k:
+            available = [s for s in EARLYR if s not in used_songs and s not in row_songs]
+            if available:
+                row_songs.append(random.choice(available))
+            else:
+                break
+    
+    used_songs.update(row_songs)
+    random.shuffle(row_songs)
+    
+    for idx, (i, j) in enumerate(center_row_squares[:len(row_songs)]):
+        card_grid[i][j] = row_songs[idx]
+    
+    # Add one blocker from LATE (anywhere NOT on center row) - REQUIRED
+    blocker = random.choice(LATE)
+    used_songs.add(blocker)
+    
+    # Find a square not on center row
+    off_row_squares = [(i, j) for i in range(card_size) for j in range(card_size) 
+                      if i != center and card_grid[i][j] is None]
+    if off_row_squares:
+        pos = random.choice(off_row_squares)
+        card_grid[pos[0]][pos[1]] = blocker
+    
+    # Fill remaining squares with songs from EARLYR
+    empty_squares = [(i, j) for i in range(card_size) for j in range(card_size) 
+                     if card_grid[i][j] is None]
+    
+    available_songs = [s for s in EARLYR if s not in used_songs]
+    random.shuffle(available_songs)
+    
+    for idx, (i, j) in enumerate(empty_squares):
+        if idx < len(available_songs):
+            card_grid[i][j] = available_songs[idx]
+        else:
+            # Ran out, allow duplicates
+            card_grid[i][j] = random.choice(EARLYR)
+    
+    return card_grid
+
+def create_card_C_two_lines(songs: List[str], card_size: int, r2: int, R: int, M: int, free_space: bool) -> List[List[str]]:
+    """
+    Create Card C: 2-line winner by round r2 (with blocker).
+    
+    Strategy:
+    - Use both center row AND center column (share FREE center)
+    - Place song at r2-1 on one of these lines
+    - Fill both lines with songs from 0 to r2-2
+    - Add blocker from songs[R..M-1]
+    - Fill rest from songs[0..R-1]
+    """
+    S = card_size * card_size - 1 if free_space else card_size * card_size
+    center = card_size // 2
+    
+    # Songs buckets
+    AT_R2 = songs[r2 - 1] if r2 <= len(songs) else songs[-1]
+    EARLY2 = songs[:r2 - 1]
+    LATE = songs[R:M] if R < M else []
+    EARLYR = songs[:R]
+    
+    # Must have blocker songs for deterministic algorithm
+    if not LATE:
+        raise ValueError(f"Need blocker songs: R={R} must be < M={M}")
+    
+    # Build card grid
+    card_grid = [[None for _ in range(card_size)] for _ in range(card_size)]
+    used_songs = set()
+    
+    # Set FREE space
+    if free_space:
+        card_grid[center][center] = "FREE SPACE"
+    
+    # Collect center row and column squares (excluding FREE center)
+    line_squares = []
+    # Center row
+    for j in range(card_size):
+        if not (free_space and j == center):
+            line_squares.append((center, j))
+    # Center column (skip center to avoid duplicate)
+    for i in range(card_size):
+        if i != center:
+            line_squares.append((i, center))
+    
+    # Total: 2(N-1) squares for free space case
+    total_line_squares = len(line_squares)
+    
+    # Place AT_R2 on one of these squares
+    line_songs = [AT_R2]
+    used_songs.add(AT_R2)
+    
+    # Fill rest with songs from EARLY2
+    available_early2 = [s for s in EARLY2 if s not in used_songs]
+    needed = total_line_squares - 1
+    
+    if len(available_early2) >= needed:
+        line_songs.extend(random.sample(available_early2, needed))
+    else:
+        line_songs.extend(available_early2)
+        # Pad from EARLYR if needed
+        while len(line_songs) < total_line_squares:
+            available = [s for s in EARLYR if s not in used_songs and s not in line_songs]
+            if available:
+                line_songs.append(random.choice(available))
+            else:
+                line_songs.append(random.choice(EARLYR))
+    
+    used_songs.update(line_songs)
+    random.shuffle(line_songs)
+    
+    for idx, (i, j) in enumerate(line_squares[:len(line_songs)]):
+        card_grid[i][j] = line_songs[idx]
+    
+    # Add blocker from LATE (NOT on center row or column) - REQUIRED
+    blocker = random.choice(LATE)
+    used_songs.add(blocker)
+    
+    off_lines = [(i, j) for i in range(card_size) for j in range(card_size) 
+                 if i != center and j != center and card_grid[i][j] is None]
+    if off_lines:
+        pos = random.choice(off_lines)
+        card_grid[pos[0]][pos[1]] = blocker
+    
+    # Fill remaining squares from EARLYR
+    empty_squares = [(i, j) for i in range(card_size) for j in range(card_size) 
+                     if card_grid[i][j] is None]
+    
+    available_songs = [s for s in EARLYR if s not in used_songs]
+    random.shuffle(available_songs)
+    
+    for idx, (i, j) in enumerate(empty_squares):
+        if idx < len(available_songs):
+            card_grid[i][j] = available_songs[idx]
+        else:
+            card_grid[i][j] = random.choice(EARLYR)
+    
+    return card_grid
+
+def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: int, free_space: bool) -> List[List[str]]:
+    """
+    Create remaining cards with blocker to prevent blackout by R.
+    
+    Strategy:
+    - Add one blocker from songs[R..M-1]
+    - Fill rest from songs[0..R-1]
+    """
+    S = card_size * card_size - 1 if free_space else card_size * card_size
+    
+    LATE = songs[R:M] if R < M else []
+    EARLYR = songs[:R]
+    
+    selected_songs = []
+    
+    # Add blocker
+    if LATE:
+        selected_songs.append(random.choice(LATE))
+    
+    # Fill rest from EARLYR
+    available = [s for s in EARLYR if s not in selected_songs]
+    if len(available) >= S - len(selected_songs):
+        selected_songs.extend(random.sample(available, S - len(selected_songs)))
+    else:
+        selected_songs.extend(available)
+        while len(selected_songs) < S:
+            selected_songs.append(random.choice(EARLYR))
+    
+    random.shuffle(selected_songs)
+    return _place_songs_on_card(selected_songs, card_size, free_space)
+
+def _place_songs_on_card(selected_songs: List[str], card_size: int, free_space: bool) -> List[List[str]]:
+    """Helper to place a list of songs onto a card grid with FREE space."""
+    card = []
+    song_idx = 0
+    center = card_size // 2
+    
+    for i in range(card_size):
+        row = []
+        for j in range(card_size):
+            if free_space and card_size % 2 == 1 and i == center and j == center:
+                row.append("FREE SPACE")
+            else:
+                if song_idx < len(selected_songs):
+                    row.append(selected_songs[song_idx])
+                    song_idx += 1
+                else:
+                    # Shouldn't happen, but fallback
+                    row.append(selected_songs[0] if selected_songs else "")
+        card.append(row)
+    
+    return card
+
 def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int, 
                                first_round: Optional[int], second_round: Optional[int], 
                                third_round: Optional[int], max_attempts: int = 10000,
                                free_space: bool = True) -> Optional[List[List[List[str]]]]:
     """
-    Generate cards with controlled 3rd place (full card) winner.
+    Generate cards with DETERMINISTIC guaranteed winners using strategic song placement.
     
-    Simplified approach:
-    - Only control when 3rd place (full card) winner occurs
-    - 1st and 2nd place happen naturally from random cards
-    - Ensure no card completes before the target round for 3rd place
+    Algorithm:
+    - Card A: Blackout (3rd place) at exactly round R (third_round)
+    - Card B: 1-line winner by round r1 (first_round) with blocker to prevent blackout
+    - Card C: 2-line winner by round r2 (second_round) with blocker
+    - Other cards: Random with blockers to prevent early blackout
     
     Args:
-        songs: List of all songs
-        num_cards: Number of cards to generate
+        songs: List of all songs in play order
+        num_cards: Number of cards to generate  
         card_size: Size of each card (NxN)
-        first_round: Not used (kept for compatibility)
-        second_round: Not used (kept for compatibility)
-        third_round: Target round for 3rd place winner (full card)
-        max_attempts: Maximum attempts per card
-        free_space: Whether to include a free space
+        first_round: Target round for 1st place (1 line) winner
+        second_round: Target round for 2nd place (2 lines) winner
+        third_round: Target round for 3rd place (blackout) winner
+        max_attempts: Not used (kept for compatibility)
+        free_space: Whether to include a free space (must be True for odd card_size)
     
     Returns:
         List of cards, or None if unable to generate valid cards
     """
-    # Randomly select position for 3rd place winner card
-    third_place_pos = random.randint(0, num_cards - 1) if third_round else None
+    if not third_round:
+        # No round control, generate random cards
+        return [create_bingo_card(songs, card_size, free_space) for _ in range(num_cards)]
+    
+    # Calculate default r1 and r2 if not provided
+    # r1 ~ 30-40% of R, r2 ~ 60-70% of R
+    R = third_round
+    if not first_round:
+        first_round = max(card_size, int(R * 0.35))
+    if not second_round:
+        second_round = max(card_size * 2, int(R * 0.65))
+    
+    r1 = first_round
+    r2 = second_round
+    
+    # Validate we have enough songs
+    M = len(songs)
+    if R > M:
+        return None  # Not enough songs
     
     # Initialize cards list
     cards = [None] * num_cards
     
-    # Generate 3rd place winner card (full card at third_round)
-    if third_round:
-        for attempt in range(max_attempts):
-            # Create a card that completes at exactly third_round
-            candidate = create_card_for_full_completion_at_round(songs, card_size, third_round, free_space)
-            one_line, two_lines, full_card = get_card_milestones(candidate, songs)
-            
-            # Verify it completes at third_round
-            if full_card == third_round:
-                cards[third_place_pos] = candidate
-                break
-        
-        if cards[third_place_pos] is None:
-            return None  # Failed to generate 3rd place winner
+    # Randomly assign which cards get which roles
+    card_positions = list(range(num_cards))
+    random.shuffle(card_positions)
     
-    # Generate all other cards, ensuring they don't complete before third_round
+    card_A_pos = card_positions[0] if num_cards >= 1 else None
+    card_B_pos = card_positions[1] if num_cards >= 2 else None
+    card_C_pos = card_positions[2] if num_cards >= 3 else None
+    
+    # Card A: Blackout winner at exactly round R
+    if card_A_pos is not None:
+        cards[card_A_pos] = create_card_A_blackout(songs, card_size, R, free_space)
+    
+    # Card B: 1-line winner by r1 (with blocker)
+    if card_B_pos is not None:
+        cards[card_B_pos] = create_card_B_one_line(songs, card_size, r1, R, M, free_space)
+    
+    # Card C: 2-line winner by r2 (with blocker)
+    if card_C_pos is not None:
+        cards[card_C_pos] = create_card_C_two_lines(songs, card_size, r2, R, M, free_space)
+    
+    # Remaining cards: random with blockers
     for i in range(num_cards):
-        if cards[i] is not None:
-            continue  # Already the 3rd place winner card
-        
-        if third_round:
-            # Generate cards that don't complete too early
-            for attempt in range(max_attempts):
-                candidate = create_bingo_card(songs, card_size, free_space)
-                one_line, two_lines, full_card = get_card_milestones(candidate, songs)
-                
-                # Card must not complete before third_round
-                if full_card is None or full_card >= third_round:
-                    cards[i] = candidate
-                    break
-            
-            if cards[i] is None:
-                # If we can't find one, just use a random card
-                cards[i] = create_bingo_card(songs, card_size, free_space)
-        else:
-            # No constraint, just generate random
-            cards[i] = create_bingo_card(songs, card_size, free_space)
+        if cards[i] is None:
+            cards[i] = create_other_card_with_blocker(songs, card_size, R, M, free_space)
     
     return cards
 
