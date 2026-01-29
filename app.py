@@ -89,6 +89,130 @@ def generate_unique_bingo_cards(songs: List[str], num_cards: int, card_size: int
         cards.append(card)
     return cards
 
+def validate_round_targets(card_size: int, num_songs: int, first_round: Optional[int], 
+                          second_round: Optional[int], third_round: Optional[int]) -> Tuple[bool, Optional[str]]:
+    """
+    Validate if the target rounds are feasible.
+    
+    Args:
+        card_size: Size of the bingo card (NxN)
+        num_songs: Number of songs in the playlist
+        first_round: Target round for 1st place winner (1 line)
+        second_round: Target round for 2nd place winner (2 lines)
+        third_round: Target round for 3rd place winner (full card)
+    
+    Returns:
+        Tuple of (is_valid, error_message). error_message is None if valid.
+    """
+    # Check order first before checking minimums
+    if first_round and second_round and first_round >= second_round:
+        return False, "2nd place round must be after 1st place round"
+    if second_round and third_round and second_round >= third_round:
+        return False, "3rd place round must be after 2nd place round"
+    if first_round and third_round and not second_round and first_round >= third_round:
+        return False, "3rd place round must be after 1st place round"
+    
+    # Minimum rounds needed for each place
+    min_first = card_size  # Need at least one full line
+    min_second = card_size + 1  # Need 2 lines minimum (one more than first)
+    min_third = (card_size * card_size) - 1 if card_size % 2 == 1 else card_size * card_size  # Full card minus free space
+    
+    if first_round and first_round < min_first:
+        return False, f"1st place (1 line) requires at least {min_first} rounds"
+    if second_round and second_round < min_second:
+        return False, f"2nd place (2 lines) requires at least {min_second} rounds"
+    if third_round and third_round < min_third:
+        return False, f"3rd place (full card) requires at least {min_third} rounds"
+    
+    if any([first_round, second_round, third_round]) and max(filter(None, [first_round, second_round, third_round])) > num_songs:
+        return False, f"Target rounds exceed number of songs ({num_songs})"
+    
+    return True, None
+
+def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int, 
+                               first_round: Optional[int], second_round: Optional[int], 
+                               third_round: Optional[int], max_attempts: int = 1000,
+                               free_space: bool = True) -> Optional[List[List[List[str]]]]:
+    """
+    Generate cards that will win at approximately the target rounds.
+    Winning cards are randomly positioned throughout the deck.
+    
+    Args:
+        songs: List of all songs
+        num_cards: Number of cards to generate
+        card_size: Size of each card (NxN)
+        first_round: Target round for 1st place winner
+        second_round: Target round for 2nd place winner
+        third_round: Target round for 3rd place winner
+        max_attempts: Maximum attempts to generate valid cards
+        free_space: Whether to include a free space
+    
+    Returns:
+        List of cards, or None if unable to generate valid cards
+    """
+    best_cards = None
+    best_error = float('inf')
+    
+    for attempt in range(max_attempts):
+        # Generate random cards
+        cards = []
+        for _ in range(num_cards):
+            card = create_bingo_card(songs, card_size, free_space)
+            cards.append(card)
+        
+        # Shuffle cards to randomize winner positions
+        import random
+        random.shuffle(cards)
+        
+        # Validate by simulating
+        results = simulate_bingo_game(cards, songs, first_round, second_round, third_round)
+        
+        # Calculate error from targets
+        total_error = 0
+        valid = True
+        
+        if first_round:
+            first_winner = results[results['Won Place'] == 1]
+            if first_winner.empty:
+                valid = False
+            else:
+                error = abs(first_winner['1 Line Round'].values[0] - first_round)
+                total_error += error
+                if error > 5:  # Too far from target
+                    valid = False
+        
+        if second_round and valid:
+            second_winner = results[results['Won Place'] == 2]
+            if second_winner.empty:
+                valid = False
+            else:
+                error = abs(second_winner['2 Lines Round'].values[0] - second_round)
+                total_error += error
+                if error > 5:
+                    valid = False
+        
+        if third_round and valid:
+            third_winner = results[results['Won Place'] == 3]
+            if third_winner.empty:
+                valid = False
+            else:
+                error = abs(third_winner['Full Card Round'].values[0] - third_round)
+                total_error += error
+                if error > 5:
+                    valid = False
+        
+        # If valid and better than previous best, save it
+        if valid and total_error < best_error:
+            best_error = total_error
+            best_cards = cards
+            
+            # If error is within tolerance, we're done
+            if total_error <= 2:
+                return best_cards
+    
+    # Return best cards found, or None if none were valid
+    return best_cards
+
 def is_called(song: str, called_songs: Set[str]) -> bool:
     """
     Check if a song is called. FREE SPACE is always considered called.
@@ -165,10 +289,12 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
                         second_winner_round: int = None,
                         third_winner_round: int = None) -> pd.DataFrame:
     """
-    Simulate the bingo game and determine when each card wins based on new rules:
-    - 1st place: One complete line (row or column, no diagonals)
-    - 2nd place: Two complete lines
-    - 3rd place: Full card
+    Simulate the bingo game and track when each card achieves milestones:
+    - 1 line: One complete line (row or column, no diagonals)
+    - 2 lines: Two complete lines
+    - Full card: All spaces called
+    
+    Also tracks which card wins 1st, 2nd, and 3rd place.
     
     Args:
         cards: List of bingo cards
@@ -177,20 +303,48 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
         second_winner_round: Target round for 2nd place winner (optional)
         third_winner_round: Target round for 3rd place winner (optional)
     
-    Returns a DataFrame with card index, win round, and win type.
+    Returns a DataFrame with card milestones and winners.
     """
-    # Shuffle the song order for calling
+    # Use playlist order as-is (no shuffling to preserve playlist order)
     call_order = songs.copy()
-    random.shuffle(call_order)
     
-    results = []
+    # Track milestones for each card
+    card_milestones = {}
+    for card_idx in range(len(cards)):
+        card_milestones[card_idx] = {
+            '1_line_round': None,
+            '2_lines_round': None,
+            'full_card_round': None
+        }
+    
     place_winners = {1: None, 2: None, 3: None}  # Track which card won each place
     called_songs = set()
     
     for round_num, song in enumerate(call_order, 1):
         called_songs.add(song)
         
-        # Check for each place in order (1st, 2nd, 3rd)
+        # Update milestones for all cards
+        for card_idx, card in enumerate(cards):
+            milestones = card_milestones[card_idx]
+            
+            # Check for 1 line (if not already achieved)
+            if milestones['1_line_round'] is None:
+                line_count, lines = count_complete_lines(card, called_songs)
+                if line_count >= 1:
+                    milestones['1_line_round'] = round_num
+            
+            # Check for 2 lines (if not already achieved)
+            if milestones['2_lines_round'] is None:
+                line_count, lines = count_complete_lines(card, called_songs)
+                if line_count >= 2:
+                    milestones['2_lines_round'] = round_num
+            
+            # Check for full card (if not already achieved)
+            if milestones['full_card_round'] is None:
+                if check_full_card(card, called_songs):
+                    milestones['full_card_round'] = round_num
+        
+        # Check for place winners in order (1st, 2nd, 3rd)
         for place in [1, 2, 3]:
             # Skip if this place already has a winner
             if place_winners[place] is not None:
@@ -216,30 +370,31 @@ def simulate_bingo_game(cards: List[List[List[str]]], songs: List[str],
                 has_won, win_type = check_bingo_win(card, called_songs, place)
                 if has_won:
                     place_winners[place] = card_idx
-                    results.append({
-                        'Card Index': card_idx + 1,
-                        'Win Round': round_num,
-                        'Win Type': win_type,
-                        'Place': place,
-                        'Song Called': song
-                    })
                     break  # Only one winner per round per place
         
         # Stop if all three places have winners
         if all(place_winners[p] is not None for p in [1, 2, 3]):
             break
     
-    # Add cards that never won
-    winning_card_indices = set(place_winners[p] for p in [1, 2, 3] if place_winners[p] is not None)
+    # Build results DataFrame with all card milestones
+    results = []
     for card_idx in range(len(cards)):
-        if card_idx not in winning_card_indices:
-            results.append({
-                'Card Index': card_idx + 1,
-                'Win Round': None,
-                'Win Type': 'No Win',
-                'Place': None,
-                'Song Called': None
-            })
+        milestones = card_milestones[card_idx]
+        
+        # Determine which place this card won (if any)
+        card_place = None
+        for place, winner_idx in place_winners.items():
+            if winner_idx == card_idx:
+                card_place = place
+                break
+        
+        results.append({
+            'Card Index': card_idx + 1,
+            '1 Line Round': milestones['1_line_round'],
+            '2 Lines Round': milestones['2_lines_round'],
+            'Full Card Round': milestones['full_card_round'],
+            'Won Place': card_place
+        })
     
     return pd.DataFrame(results)
 
@@ -420,51 +575,62 @@ def generate_bingo_pdf(
     
     # Instructions
     elements.append(Paragraph(
-        "<b>Instructions:</b> This table shows the order in which bingo cards will win as you call songs from the playlist.",
+        "<b>Instructions:</b> This table shows when each card achieves milestones. "
+        "Highlighted rows show which card won 1st (1 line), 2nd (2 lines), and 3rd (full card) place.",
         styles['Normal']
     ))
     elements.append(Spacer(1, 0.3*inch))
     
-    # Create operator table
-    op_data = [['Card', 'Win Round', 'Win Type', 'Place', 'Song Called']]
+    # Create operator table with all milestones
+    op_data = [['Card', '1 Line', '2 Lines', 'Full Card']]
+    
+    # Track which rows to highlight
+    highlight_rows = {}
     
     for _, row in results_df.iterrows():
-        card_idx = f"Card #{int(row['Card Index'])}"
-        win_round = f"Round {int(row['Win Round'])}" if pd.notna(row['Win Round']) else "No Win"
-        win_type = row['Win Type'] if pd.notna(row['Win Type']) else "-"
+        card_idx = int(row['Card Index'])
+        one_line = f"Round {int(row['1 Line Round'])}" if pd.notna(row['1 Line Round']) else "-"
+        two_lines = f"Round {int(row['2 Lines Round'])}" if pd.notna(row['2 Lines Round']) else "-"
+        full_card = f"Round {int(row['Full Card Round'])}" if pd.notna(row['Full Card Round']) else "-"
         
-        if pd.notna(row['Place']):
-            place = int(row['Place'])
-            if place == 1:
-                place_text = "🥇 1st"
-            elif place == 2:
-                place_text = "🥈 2nd"
-            elif place == 3:
-                place_text = "🥉 3rd"
-            else:
-                place_text = str(place)
-        else:
-            place_text = "-"
+        op_data.append([f"Card #{card_idx}", one_line, two_lines, full_card])
         
-        song = row['Song Called'] if pd.notna(row['Song Called']) else "-"
-        
-        op_data.append([card_idx, win_round, win_type, place_text, song])
+        # Track which place this card won for highlighting
+        if pd.notna(row['Won Place']):
+            place = int(row['Won Place'])
+            highlight_rows[len(op_data) - 1] = place  # Store row index and place
     
-    op_table = Table(op_data, colWidths=[0.8*inch, 1.2*inch, 1.5*inch, 1*inch, 3*inch])
-    op_table.setStyle(TableStyle([
+    op_table = Table(op_data, colWidths=[1.5*inch, 2*inch, 2*inch, 2*inch])
+    
+    # Build style list
+    style_list = [
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4CAF50')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, 1), colors.HexColor('#fff9c4')),  # 1st place
-        ('BACKGROUND', (0, 2), (-1, 2), colors.HexColor('#ffe0b2')),  # 2nd place
-        ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#ffccbc')),  # 3rd place
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    ]
+    
+    # Add highlighting for winning cards
+    for row_idx, place in highlight_rows.items():
+        if place == 1:
+            # Highlight 1 Line column for 1st place winner
+            style_list.append(('BACKGROUND', (1, row_idx), (1, row_idx), colors.HexColor('#fff9c4')))
+            style_list.append(('FONTNAME', (1, row_idx), (1, row_idx), 'Helvetica-Bold'))
+        elif place == 2:
+            # Highlight 2 Lines column for 2nd place winner
+            style_list.append(('BACKGROUND', (2, row_idx), (2, row_idx), colors.HexColor('#ffe0b2')))
+            style_list.append(('FONTNAME', (2, row_idx), (2, row_idx), 'Helvetica-Bold'))
+        elif place == 3:
+            # Highlight Full Card column for 3rd place winner
+            style_list.append(('BACKGROUND', (3, row_idx), (3, row_idx), colors.HexColor('#ffccbc')))
+            style_list.append(('FONTNAME', (3, row_idx), (3, row_idx), 'Helvetica-Bold'))
+    
+    op_table.setStyle(TableStyle(style_list))
     
     elements.append(op_table)
     
@@ -574,13 +740,39 @@ def main():
             if songs:
                 st.success(f"Found {len(songs)} songs in the playlist!")
                 
+                # Validate round targets if round control is enabled
+                if use_round_control:
+                    is_valid, error_msg = validate_round_targets(
+                        card_size, 
+                        len(songs),
+                        first_winner_round,
+                        second_winner_round,
+                        third_winner_round
+                    )
+                    if not is_valid:
+                        st.error(f"❌ Invalid round targets: {error_msg}")
+                        st.stop()
+                
                 # Display song list
                 with st.expander(f"View all {len(songs)} songs"):
                     st.write(", ".join(songs))
                 
                 # Generate bingo cards
                 with st.spinner(f"Generating {num_cards} unique bingo cards..."):
-                    cards = generate_unique_bingo_cards(songs, num_cards, card_size)
+                    if use_round_control:
+                        cards = generate_cards_for_targets(
+                            songs, 
+                            num_cards, 
+                            card_size,
+                            first_winner_round,
+                            second_winner_round,
+                            third_winner_round
+                        )
+                        if cards is None:
+                            st.warning("⚠️ Could not generate cards that meet exact target rounds after 1000 attempts. Try adjusting target rounds or card size.")
+                            st.stop()
+                    else:
+                        cards = generate_unique_bingo_cards(songs, num_cards, card_size)
                 
                 st.success(f"Generated {len(cards)} bingo cards!")
                 
@@ -599,10 +791,10 @@ def main():
                     # Create empty results dataframe if not analyzing
                     results_df = pd.DataFrame({
                         'Card Index': range(1, len(cards) + 1),
-                        'Win Round': [None] * len(cards),
-                        'Win Type': [None] * len(cards),
-                        'Place': [None] * len(cards),
-                        'Song Called': [None] * len(cards)
+                        '1 Line Round': [None] * len(cards),
+                        '2 Lines Round': [None] * len(cards),
+                        'Full Card Round': [None] * len(cards),
+                        'Won Place': [None] * len(cards)
                     })
                 
                 # Generate and offer PDF download
@@ -635,32 +827,65 @@ def main():
                     # Show summary statistics
                     col1, col2, col3 = st.columns(3)
                     
-                    first_place = results_df[results_df['Place'] == 1]
-                    second_place = results_df[results_df['Place'] == 2]
-                    third_place = results_df[results_df['Place'] == 3]
+                    first_place = results_df[results_df['Won Place'] == 1]
+                    second_place = results_df[results_df['Won Place'] == 2]
+                    third_place = results_df[results_df['Won Place'] == 3]
                     
                     with col1:
                         if not first_place.empty:
-                            st.metric("🥇 1st Place", f"Card #{first_place['Card Index'].values[0]}", 
-                                     f"Round {first_place['Win Round'].values[0]}")
+                            card_num = first_place['Card Index'].values[0]
+                            round_num = first_place['1 Line Round'].values[0]
+                            st.metric("🥇 1st Place (1 Line)", f"Card #{card_num}", 
+                                     f"Round {round_num}")
                     
                     with col2:
                         if not second_place.empty:
-                            st.metric("🥈 2nd Place", f"Card #{second_place['Card Index'].values[0]}", 
-                                     f"Round {second_place['Win Round'].values[0]}")
+                            card_num = second_place['Card Index'].values[0]
+                            round_num = second_place['2 Lines Round'].values[0]
+                            st.metric("🥈 2nd Place (2 Lines)", f"Card #{card_num}", 
+                                     f"Round {round_num}")
                     
                     with col3:
                         if not third_place.empty:
-                            st.metric("🥉 3rd Place", f"Card #{third_place['Card Index'].values[0]}", 
-                                     f"Round {third_place['Win Round'].values[0]}")
+                            card_num = third_place['Card Index'].values[0]
+                            round_num = third_place['Full Card Round'].values[0]
+                            st.metric("🥉 3rd Place (Full Card)", f"Card #{card_num}", 
+                                     f"Round {round_num}")
                     
                     # Operator table
                     st.subheader("Operator Control Table")
-                    st.info("This table shows which round each bingo card will win. Use this to call songs in order.")
+                    st.info("This table shows when each card achieves milestones. Highlighted cells show winners.")
                     
-                    # Sort by win round
+                    # Format display DataFrame
                     display_df = results_df.copy()
-                    display_df = display_df.sort_values('Win Round', na_position='last')
+                    
+                    # Add highlighting info as text for display
+                    def format_cell(row, col_name):
+                        value = row[col_name]
+                        if pd.isna(value):
+                            return "-"
+                        round_val = f"Round {int(value)}"
+                        
+                        # Add emoji if this card won this milestone
+                        if col_name == '1 Line Round' and row['Won Place'] == 1:
+                            return f"🥇 {round_val}"
+                        elif col_name == '2 Lines Round' and row['Won Place'] == 2:
+                            return f"🥈 {round_val}"
+                        elif col_name == 'Full Card Round' and row['Won Place'] == 3:
+                            return f"🥉 {round_val}"
+                        return round_val
+                    
+                    display_df['1 Line'] = display_df.apply(lambda r: format_cell(r, '1 Line Round'), axis=1)
+                    display_df['2 Lines'] = display_df.apply(lambda r: format_cell(r, '2 Lines Round'), axis=1)
+                    display_df['Full Card'] = display_df.apply(lambda r: format_cell(r, 'Full Card Round'), axis=1)
+                    
+                    # Select and rename columns for display
+                    display_df = display_df[['Card Index', '1 Line', '2 Lines', 'Full Card']]
+                    display_df = display_df.rename(columns={'Card Index': 'Card'})
+                    display_df['Card'] = display_df['Card'].apply(lambda x: f"Card #{int(x)}")
+                    
+                    # Sort by card index
+                    display_df = display_df.sort_values('Card')
                     
                     # Format the table
                     st.dataframe(
@@ -670,7 +895,7 @@ def main():
                     )
                     
                     # Download option for operator table
-                    csv = display_df.to_csv(index=False)
+                    csv = results_df.to_csv(index=False)
                     st.download_button(
                         label="📥 Download Operator Table (CSV)",
                         data=csv,
