@@ -101,11 +101,11 @@ def test_game_simulation():
     
     assert len(results_df) == 5, f"Should have results for 5 cards, got {len(results_df)}"
     assert 'Card Index' in results_df.columns, "Results should have Card Index column"
-    assert 'Win Round' in results_df.columns, "Results should have Win Round column"
-    assert 'Place' in results_df.columns, "Results should have Place column"
+    assert '1 Line Round' in results_df.columns, "Results should have 1 Line Round column"
+    assert 'Won Place' in results_df.columns, "Results should have Won Place column"
     
     # Check that we have 1st, 2nd, 3rd place winners
-    places = results_df['Place'].dropna().tolist()
+    places = results_df['Won Place'].dropna().tolist()
     assert 1 in places, "Should have a 1st place winner"
     
     print("✓ Game simulation working correctly")
