@@ -498,7 +498,7 @@ def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: 
     
     Strategy:
     - Add one blocker from songs[R..M-1] to prevent early blackout
-    - Place "late" songs strategically in each row/column to delay 2-line completion
+    - Place "late" songs strategically in EVERY row and column to delay 2-line completion
     """
     S = card_size * card_size - 1 if free_space else card_size * card_size
     center = card_size // 2
@@ -507,7 +507,7 @@ def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: 
     EARLYR = songs[:R]
     
     # Songs in the range [second_round, R) to delay line completion
-    delay_songs = songs[second_round + 2:R] if second_round + 2 < R else []
+    delay_songs = songs[second_round:R] if second_round < R else []
     
     card_grid = [[None for _ in range(card_size)] for _ in range(card_size)]
     used_songs = set()
@@ -525,13 +525,23 @@ def create_other_card_with_blocker(songs: List[str], card_size: int, R: int, M: 
             i, j = random.randint(0, card_size-1), random.randint(0, card_size-1)
         card_grid[i][j] = blocker
     
-    # For each row, place at least one delay song to prevent early line completion
+    # For EVERY row, place at least one delay song to prevent early line completion
     if delay_songs:
         for i in range(card_size):
-            delay_song = random.choice(delay_songs)
             available_cols = [j for j in range(card_size) if card_grid[i][j] is None]
             if available_cols:
+                delay_song = random.choice(delay_songs)
                 j = random.choice(available_cols)
+                card_grid[i][j] = delay_song
+                used_songs.add(delay_song)
+    
+    # For EVERY column, place at least one delay song to prevent early line completion
+    if delay_songs:
+        for j in range(card_size):
+            available_rows = [i for i in range(card_size) if card_grid[i][j] is None]
+            if available_rows:
+                delay_song = random.choice(delay_songs)
+                i = random.choice(available_rows)
                 card_grid[i][j] = delay_song
                 used_songs.add(delay_song)
     
@@ -645,6 +655,38 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
     for i in range(num_cards):
         if cards[i] is None:
             cards[i] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
+    
+    # Validate and regenerate cards that achieve 2 lines before the target round
+    max_regeneration_attempts = 100
+    for attempt in range(max_regeneration_attempts):
+        # Simulate to check when each card achieves 2 lines
+        called_songs = set()
+        card_2_lines_rounds = {}
+        
+        for round_num in range(1, min(r2 + 10, len(songs) + 1)):  # Check up to a bit past r2
+            called_songs.add(songs[round_num - 1])
+            
+            for card_idx, card in enumerate(cards):
+                if card_idx not in card_2_lines_rounds:
+                    line_count, _ = count_complete_lines(card, called_songs)
+                    if line_count >= 2:
+                        card_2_lines_rounds[card_idx] = round_num
+        
+        # Find cards that achieved 2 lines before r2 (excluding designated winners)
+        cards_to_regenerate = []
+        designated_positions = {card_A_pos, card_B_pos, card_C_pos}
+        
+        for card_idx, achieve_round in card_2_lines_rounds.items():
+            if achieve_round < r2 and card_idx not in designated_positions:
+                cards_to_regenerate.append(card_idx)
+        
+        # If no cards need regeneration, we're done
+        if not cards_to_regenerate:
+            break
+        
+        # Regenerate the problematic cards
+        for card_idx in cards_to_regenerate:
+            cards[card_idx] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
     
     return cards
 
