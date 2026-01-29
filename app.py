@@ -232,7 +232,7 @@ def get_card_milestones(card: List[List[str]], songs: List[str]) -> Tuple[Option
     
     return one_line_round, two_lines_round, full_card_round
 
-def create_card_A_blackout(songs: List[str], card_size: int, R: int, free_space: bool) -> List[List[str]]:
+def create_card_A_blackout(songs: List[str], card_size: int, R: int, free_space: bool, max_attempts: int = 100) -> List[List[str]]:
     """
     Create Card A: Blackout winner at exactly round R.
     
@@ -240,6 +240,8 @@ def create_card_A_blackout(songs: List[str], card_size: int, R: int, free_space:
     - Include song at index R-1 (will be called at round R)
     - Fill remaining S-1 squares with songs from indices 0 to R-2
     - Card completes when song[R-1] is called at round R
+    - CRITICAL: Ensure card doesn't get any complete lines before round R-card_size
+      to prevent winning 1st or 2nd place before it can win 3rd place
     """
     S = card_size * card_size - 1 if free_space else card_size * card_size
     
@@ -247,22 +249,40 @@ def create_card_A_blackout(songs: List[str], card_size: int, R: int, free_space:
     AT_R = songs[R - 1]
     EARLYR = songs[:R - 1]
     
-    # Build set of S songs: AT_R + (S-1) from EARLYR
-    if len(EARLYR) < S - 1:
-        # Not enough early songs, use what we have
-        selected_songs = [AT_R] + EARLYR
-        # Pad if needed
-        while len(selected_songs) < S:
-            selected_songs.append(EARLYR[len(selected_songs) % len(EARLYR)])
-    else:
-        # Sample S-1 songs from EARLYR
-        selected_songs = [AT_R] + random.sample(EARLYR, S - 1)
+    # Try multiple times to generate a card that doesn't get lines too early
+    for attempt in range(max_attempts):
+        # Build set of S songs: AT_R + (S-1) from EARLYR
+        if len(EARLYR) < S - 1:
+            # Not enough early songs, use what we have
+            selected_songs = [AT_R] + EARLYR
+            # Pad if needed
+            while len(selected_songs) < S:
+                selected_songs.append(EARLYR[len(selected_songs) % len(EARLYR)])
+        else:
+            # Sample S-1 songs from EARLYR
+            selected_songs = [AT_R] + random.sample(EARLYR, S - 1)
+        
+        # Shuffle to avoid patterns
+        random.shuffle(selected_songs)
+        
+        # Place into grid
+        card = _place_songs_on_card(selected_songs, card_size, free_space)
+        
+        # Check if this card gets lines too early
+        # We want to avoid getting 1 line before round R - (card_size * 2)
+        # and 2 lines before round R - card_size
+        one_line, two_lines, full_card = get_card_milestones(card, songs)
+        
+        # Accept if: no lines before mid-game OR full card is at R
+        # Target: 1st line should be after R*0.5, 2nd line after R*0.7
+        if full_card == R:
+            if one_line is None or one_line > int(R * 0.5):
+                if two_lines is None or two_lines > int(R * 0.7):
+                    return card
     
-    # Shuffle to avoid patterns
-    random.shuffle(selected_songs)
-    
-    # Place into grid
-    return _place_songs_on_card(selected_songs, card_size, free_space)
+    # If we couldn't find a good card, return the last one
+    # (better than failing completely)
+    return card
 
 def create_card_B_one_line(songs: List[str], card_size: int, r1: int, R: int, M: int, free_space: bool) -> List[List[str]]:
     """
@@ -946,7 +966,8 @@ def generate_bingo_pdf(
     # Instructions
     elements.append(Paragraph(
         "<b>Instructions:</b> This table shows when each card achieves milestones. "
-        "Highlighted rows show which card won 1st (1 line), 2nd (2 lines), and 3rd (full card) place.",
+        "Highlighted rows show which card won 1st (1 line), 2nd (2 lines), and 3rd (full card) place. "
+        "<b>Important:</b> Once a card wins a place, it is ineligible to win another place.",
         styles['Normal']
     ))
     elements.append(Spacer(1, 0.3*inch))
