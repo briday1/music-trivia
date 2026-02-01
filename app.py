@@ -7,7 +7,7 @@ import itertools
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
@@ -677,7 +677,7 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
             cards[i] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
     
     # Validate and regenerate cards that achieve 2 lines before the target round
-    max_regeneration_attempts = 5000
+    max_regeneration_attempts = 100000
     for attempt in range(max_regeneration_attempts):
         # Simulate to check when each card achieves 2 lines
         called_songs = set()
@@ -942,11 +942,11 @@ def format_bingo_card_html(card: List[List[str]], card_index: int) -> str:
     for row in card:
         html += '<tr>'
         for song in row:
-            # Handle FREE SPACE with bold formatting
+            # Handle FREE SPACE with bold formatting and larger font
             if song == "FREE SPACE":
                 html += f'<td style="border: 2px solid black; padding: 10px; text-align: center; height: 70px; font-size: 16px; font-weight: bold;">{song}</td>'
             else:
-                # Less aggressive truncation, allow more text to show
+                # Improved text truncation and larger font for better readability
                 display_song = song[:50] + '...' if len(song) > 50 else song
                 html += f'<td style="border: 2px solid black; padding: 10px; text-align: center; height: 70px; font-size: 14px;">{display_song}</td>'
         html += '</tr>'
@@ -963,7 +963,6 @@ def generate_bingo_pdf(
 ) -> BytesIO:
     """
     Generate a PDF with all bingo cards and operator reference sheet.
-    Cards are arranged in a 2x2 grid (4 cards per page) for optimal printing.
     
     Args:
         cards: List of bingo cards
@@ -975,89 +974,39 @@ def generate_bingo_pdf(
     Returns:
         BytesIO object containing the PDF
     """
-    # Configuration constants
-    CARDS_PER_PAGE = 4  # 2x2 grid layout
-    CARDS_PER_ROW = 2
-    CARDS_PER_COL = 2
-    PAGE_MARGIN = 0.25 * inch  # Reduced margins for more space
-    
     buffer = BytesIO()
+    # Reduced margins for better space utilization and readability
     doc = SimpleDocTemplate(buffer, pagesize=letter, 
-                           topMargin=PAGE_MARGIN, bottomMargin=PAGE_MARGIN,
-                           leftMargin=PAGE_MARGIN, rightMargin=PAGE_MARGIN)
+                           topMargin=0.25*inch, bottomMargin=0.25*inch,
+                           leftMargin=0.25*inch, rightMargin=0.25*inch)
     elements = []
     
     styles = getSampleStyleSheet()
-    
-    # Calculate available space for cards
-    page_width, page_height = letter
-    available_width = page_width - (2 * PAGE_MARGIN)
-    available_height = page_height - (2 * PAGE_MARGIN)
-    
-    # Calculate dimensions for each card in the 2x2 grid
-    card_width = available_width / CARDS_PER_ROW
-    card_height = available_height / CARDS_PER_COL
-    
-    # Card table size (use 90% of available space to allow for inter-card spacing and padding)
-    card_table_size = min(card_width, card_height) * 0.90
-    
-    # Define paragraph styles once (outside the loop for performance)
     title_style = ParagraphStyle(
         'CustomTitle',
-        parent=styles['Heading3'],
+        parent=styles['Heading2'],
         alignment=TA_CENTER,
-        spaceAfter=2,
-        spaceBefore=0,
-        fontSize=9
+        spaceAfter=12
     )
-    
-    song_style = ParagraphStyle(
-        'SongCell',
-        alignment=TA_CENTER,
-        fontSize=10,  # Increased from 7
-        leading=11,   # Tighter leading
-        spaceBefore=0,
-        spaceAfter=0
-    )
-    
-    free_space_style = ParagraphStyle(
-        'FreeSpace',
-        alignment=TA_CENTER,
-        fontSize=12,  # Increased from 8
-        leading=13,
-        fontName='Helvetica-Bold',
-        spaceBefore=0,
-        spaceAfter=0
-    )
-    
     index_style = ParagraphStyle(
         'CardIndex',
         parent=styles['Normal'],
-        alignment=TA_CENTER,
-        fontSize=7,
-        textColor=colors.grey,
-        spaceAfter=0,
-        spaceBefore=1
+        alignment=TA_RIGHT,
+        fontSize=8,
+        textColor=colors.grey
     )
     
-    # Helper function to create a single bingo card
-    def create_single_card(card, card_idx):
-        """Create a single bingo card.
-        
-        Returns:
-            List of flowable elements (title, bingo table, card index) that comprise one card.
-        """
-        card_size = len(card)
-        
-        # Build all card elements
-        card_elements = []
-        
-        # Add optional title at top (compact)
+    # Generate each bingo card
+    for card_idx, card in enumerate(cards):
+        # Add optional title at top
         if title:
-            card_elements.append(Paragraph(title, title_style))
+            elements.append(Paragraph(title, title_style))
+            elements.append(Spacer(1, 0.2*inch))
         
         # Create table data (no BINGO header)
         table_data = []
+        card_size = len(card)
+        center = card_size // 2
         
         for row_idx, row in enumerate(card):
             table_row = []
@@ -1071,7 +1020,7 @@ def generate_bingo_pdf(
                             img = PILImage.open(logo_image)
                             
                             # Calculate dimensions with zoom
-                            max_size = 70 * logo_zoom  # Slightly larger
+                            max_size = 60 * logo_zoom
                             img.thumbnail((max_size, max_size), PILImage.Resampling.LANCZOS)
                             
                             # Save to BytesIO
@@ -1084,76 +1033,57 @@ def generate_bingo_pdf(
                             table_row.append(rl_img)
                         except Exception as e:
                             # Fallback to text if image fails
-                            table_row.append(Paragraph("FREE<br/>SPACE", free_space_style))
+                            table_row.append(Paragraph("FREE<br/>SPACE", 
+                                ParagraphStyle('center', alignment=TA_CENTER, fontSize=12, fontName='Helvetica-Bold')))
                     else:
-                        # Text free space
-                        table_row.append(Paragraph("FREE<br/>SPACE", free_space_style))
+                        # Text free space - increased font size for better readability
+                        table_row.append(Paragraph("FREE<br/>SPACE", 
+                            ParagraphStyle('center', alignment=TA_CENTER, fontSize=12, fontName='Helvetica-Bold')))
                 else:
-                    # Regular song cell - improved wrapping (allow more text, 2 lines)
+                    # Regular song cell - increased font size and better text wrapping for readability
                     song_text = song[:50] if len(song) <= 50 else song[:47] + "..."
-                    table_row.append(Paragraph(song_text, song_style))
+                    table_row.append(Paragraph(song_text, 
+                        ParagraphStyle('center', alignment=TA_CENTER, fontSize=10)))
             table_data.append(table_row)
         
-        # Create the table with sizing based on calculated card_table_size
-        col_width = card_table_size / card_size
-        
-        bingo_table = Table(table_data, colWidths=[col_width] * card_size, 
-                          rowHeights=[col_width] * card_size)
+        # Create the table
+        col_width = 6.5*inch / card_size
+        table = Table(table_data, colWidths=[col_width] * card_size, 
+                     rowHeights=[col_width] * card_size)
         
         # Style the table
-        bingo_table.setStyle(TableStyle([
-            ('GRID', (0, 0), (-1, -1), 1.5, colors.black),  # Slightly thicker grid
+        table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('BACKGROUND', (0, 0), (-1, -1), colors.white),
         ]))
         
-        card_elements.append(bingo_table)
+        elements.append(table)
+        elements.append(Spacer(1, 0.1*inch))
         
-        # Add compact card index (using pre-defined style)
-        card_elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
+        # Add card index and game instructions at the bottom
+        elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
+        elements.append(Spacer(1, 0.1*inch))
         
-        # Return all card elements as a simple list (to be wrapped by layout table)
-        return card_elements
-    
-    # Group cards into grids (CARDS_PER_PAGE cards per page)
-    for page_start in range(0, len(cards), CARDS_PER_PAGE):
-        page_cards = cards[page_start:page_start + CARDS_PER_PAGE]
+        # Add minimal game instructions at the bottom
+        instructions_style = ParagraphStyle(
+            'Instructions',
+            parent=styles['Normal'],
+            fontSize=7,
+            textColor=colors.grey,
+            alignment=TA_CENTER
+        )
+        instructions_text = (
+            "First place winner: One line (up/down, left/right). "
+            "Second place winner: Two lines. "
+            "Third place winner: Fill sheet. "
+            "Each card can only win once."
+        )
+        elements.append(Paragraph(instructions_text, instructions_style))
         
-        # Create 2x2 layout
-        layout_data = []
-        for grid_row in range(CARDS_PER_ROW):
-            layout_row = []
-            for grid_col in range(CARDS_PER_COL):
-                card_idx = page_start + (grid_row * CARDS_PER_COL + grid_col)
-                if card_idx < len(cards):
-                    # Get card elements and wrap them in a single-column table
-                    card_elements = create_single_card(cards[card_idx], card_idx)
-                    # Create a container table for this card
-                    card_container = Table([[elem] for elem in card_elements])
-                    card_container.setStyle(TableStyle([
-                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ]))
-                    layout_row.append(card_container)
-                else:
-                    # Empty cell if we don't have enough cards
-                    layout_row.append("")
-            layout_data.append(layout_row)
-        
-        # Create the layout table with calculated dimensions
-        layout_table = Table(layout_data, colWidths=[card_width] * CARDS_PER_COL,
-                            rowHeights=[card_height] * CARDS_PER_ROW)
-        layout_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ]))
-        
-        # Wrap layout table in KeepTogether to prevent page breaks within the 2x2 grid
-        elements.append(KeepTogether(layout_table))
-        
-        # Page break after each page of cards (except the last)
-        if page_start + CARDS_PER_PAGE < len(cards):
+        # Page break after each card (except the last)
+        if card_idx < len(cards) - 1:
             elements.append(PageBreak())
     
     # Add operator reference sheet
@@ -1254,9 +1184,10 @@ def main():
     """)
     
     # CSV file uploader
+    # Note: Accepting both 'csv' and 'txt' for better mobile device compatibility
     uploaded_file = st.file_uploader(
         "Upload Exportify CSV File",
-        type=['csv'],
+        type=['csv', 'txt'],
         help="Upload a CSV file exported from https://exportify.net/"
     )
     

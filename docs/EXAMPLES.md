@@ -6,22 +6,16 @@ This document shows examples of the bingo cards and operator reference sheet gen
 
 The app now generates a **complete PDF** containing all bingo cards and the operator reference sheet, ready for printing.
 
-### Print-Optimized 2x2 Layout
-
-The PDF is optimized for printing with **4 cards per page** in a 2x2 grid layout. This ensures:
-- **Improved readability** with larger fonts (10pt for song titles, 12pt for FREE SPACE)
-- **Better space utilization** with reduced margins (0.25 inch on all sides)
-- **Easy printing** - simply print the PDF at 100% scale on letter-size paper
-- **Less paper waste** - 4 cards per page instead of 1
-
 ### Bingo Card with Title and Free Space
 
 Each bingo card features:
 - **Optional custom title** at the top (e.g., "Music Bingo Night")
 - **No B-I-N-G-O header** - clean, modern design
 - **FREE SPACE in the center** with either text or an uploaded logo
-- **Larger, more readable font sizes** for better visibility when printed
-- **Card index at bottom** (e.g., "Card #1")
+- **Improved readability** with larger fonts (10pt for song titles, 12pt for FREE SPACE)
+- **Better space utilization** with reduced margins (0.25 inch on all sides)
+- **More complete song titles** shown (up to 50 characters before truncation)
+- **Card index in bottom corner** (e.g., "Card #1")
 - **5x5 grid** (configurable from 3x3 to 7x7)
 
 ![PDF Bingo Card Example](https://github.com/user-attachments/assets/ffd138c1-64f7-4c3f-9385-a541d4c8ed7b)
@@ -37,21 +31,19 @@ You can upload a logo image to display in the FREE SPACE:
 - Adjustable zoom (0.5x to 2.0x) to fit your design
 - Automatically centered in the free space
 - Maintains aspect ratio
-- Larger display area for better visibility
 
 ## Original HTML Preview Format
 
-For quick preview in the browser, cards are still shown in HTML format with improved readability:
+For quick preview in the browser, cards are shown in HTML format with improved readability:
 
 ![Bingo Card HTML Preview](https://github.com/user-attachments/assets/84b00aa1-6f4e-45f7-9110-90577a3aed5e)
 
 **Card Features:**
 - Traditional B-I-N-G-O header with green background
-- **Larger font sizes** (14px for songs, 16px for FREE SPACE) for better readability
+- **Larger fonts** (14px for songs, 16px for FREE SPACE) for better readability
 - 25 unique song positions (for 5x5 cards)
-- Song titles with artist names (up to 50 characters before truncation)
+- Song titles with artist names (up to 50 characters shown)
 - Clear borders for easy reading
-- **Reduced padding** for more compact display
 - Print-ready format with automatic page breaks
 - Unique card number (#1, #2, etc.)
 
@@ -72,26 +64,17 @@ The PDF includes an operator reference sheet showing the complete game progressi
 - **Song Called**: The song that completed the winning pattern
 
 **How to Use:**
-1. **Download the PDF** from the app
-2. **Print at 100% scale** on letter-size paper (8.5" x 11")
-   - The PDF is pre-formatted with 4 cards per page in a 2x2 grid
-   - No need to use "multiple pages per sheet" settings - it's already optimized!
-   - Simply use standard print settings
-3. **Cut the cards** along the margins between the 4 cards on each page (optional)
-4. Distribute cards to players
-5. Keep the operator reference sheet for yourself to manage the game
-6. Call songs from the playlist in random order
-7. Watch for the predicted wins to occur
-8. Award prizes to 1st, 2nd, and 3rd place winners
+1. **Print the PDF** at 100% scale (no shrinking) on letter-size paper (8.5" x 11")
+2. Distribute cards to players
+3. Keep the operator reference sheet for yourself
+4. Call songs from the playlist in random order
+5. Watch for the predicted wins to occur
+6. Award prizes to 1st, 2nd, and 3rd place winners
 
-## Printing Tips
-
-**For Best Results:**
-- Print at 100% scale (no scaling/shrinking)
-- Use letter-size paper (8.5" x 11")
-- The 2x2 layout uses 0.25" margins, which are safe for most printers
-- Each card is approximately 3.5" x 3.5", providing good readability
-- Font sizes have been optimized for clear visibility after printing
+**Printing Tips:**
+- Cards use 0.25" margins which are safe for most printers
+- Print at 100% scale for optimal readability
+- Use your printer's "2 pages per sheet" or "4 pages per sheet" setting if you want multiple cards per physical page
 
 ## Game Flow Example
 
