@@ -677,7 +677,7 @@ def generate_cards_for_targets(songs: List[str], num_cards: int, card_size: int,
             cards[i] = create_other_card_with_blocker(songs, card_size, R, M, r2, free_space)
     
     # Validate and regenerate cards that achieve 2 lines before the target round
-    max_regeneration_attempts = 5000
+    max_regeneration_attempts = 100000
     for attempt in range(max_regeneration_attempts):
         # Simulate to check when each card achieves 2 lines
         called_songs = set()
@@ -930,21 +930,25 @@ def calculate_win_probability(cards: List[List[List[str]]], songs: List[str],
     return wins / num_simulations
 
 def format_bingo_card_html(card: List[List[str]], card_index: int) -> str:
-    """Format a bingo card as HTML for display."""
-    html = f'<div style="page-break-after: always; margin-bottom: 20px;">'
-    html += f'<h3 style="text-align: center;">Bingo Card #{card_index + 1}</h3>'
+    """Format a bingo card as HTML for display with improved readability."""
+    html = f'<div style="page-break-after: always; margin-bottom: 10px;">'
+    html += f'<h3 style="text-align: center; margin-bottom: 5px;">Bingo Card #{card_index + 1}</h3>'
     html += '<table style="border-collapse: collapse; width: 100%; max-width: 600px; margin: 0 auto;">'
     html += '<tr style="background-color: #4CAF50; color: white;">'
     for letter in 'BINGO':
-        html += f'<th style="border: 2px solid black; padding: 10px; text-align: center; font-size: 24px;">{letter}</th>'
+        html += f'<th style="border: 2px solid black; padding: 8px; text-align: center; font-size: 24px;">{letter}</th>'
     html += '</tr>'
     
     for row in card:
         html += '<tr>'
         for song in row:
-            # Truncate long song names
-            display_song = song[:20] + '...' if len(song) > 20 else song
-            html += f'<td style="border: 2px solid black; padding: 15px; text-align: center; height: 80px; font-size: 12px;">{display_song}</td>'
+            # Handle FREE SPACE with bold formatting and larger font
+            if song == "FREE SPACE":
+                html += f'<td style="border: 2px solid black; padding: 10px; text-align: center; height: 70px; font-size: 16px; font-weight: bold;">{song}</td>'
+            else:
+                # Improved text truncation and larger font for better readability
+                display_song = song[:50] + '...' if len(song) > 50 else song
+                html += f'<td style="border: 2px solid black; padding: 10px; text-align: center; height: 70px; font-size: 14px;">{display_song}</td>'
         html += '</tr>'
     
     html += '</table></div>'
@@ -971,7 +975,10 @@ def generate_bingo_pdf(
         BytesIO object containing the PDF
     """
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
+    # Reduced margins for better space utilization and readability
+    doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                           topMargin=0.25*inch, bottomMargin=0.25*inch,
+                           leftMargin=0.25*inch, rightMargin=0.25*inch)
     elements = []
     
     styles = getSampleStyleSheet()
@@ -1027,16 +1034,16 @@ def generate_bingo_pdf(
                         except Exception as e:
                             # Fallback to text if image fails
                             table_row.append(Paragraph("FREE<br/>SPACE", 
-                                ParagraphStyle('center', alignment=TA_CENTER, fontSize=8)))
+                                ParagraphStyle('center', alignment=TA_CENTER, fontSize=12, fontName='Helvetica-Bold')))
                     else:
-                        # Text free space
+                        # Text free space - increased font size for better readability
                         table_row.append(Paragraph("FREE<br/>SPACE", 
-                            ParagraphStyle('center', alignment=TA_CENTER, fontSize=8)))
+                            ParagraphStyle('center', alignment=TA_CENTER, fontSize=12, fontName='Helvetica-Bold')))
                 else:
-                    # Regular song cell - wrap text
-                    song_text = song[:30] if len(song) <= 30 else song[:27] + "..."
+                    # Regular song cell - increased font size and better text wrapping for readability
+                    song_text = song[:50] if len(song) <= 50 else song[:47] + "..."
                     table_row.append(Paragraph(song_text, 
-                        ParagraphStyle('center', alignment=TA_CENTER, fontSize=7)))
+                        ParagraphStyle('center', alignment=TA_CENTER, fontSize=10)))
             table_data.append(table_row)
         
         # Create the table
@@ -1177,9 +1184,10 @@ def main():
     """)
     
     # CSV file uploader
+    # Note: Accepting both 'csv' and 'txt' for better mobile device compatibility
     uploaded_file = st.file_uploader(
         "Upload Exportify CSV File",
-        type=['csv'],
+        type=['csv', 'txt'],
         help="Upload a CSV file exported from https://exportify.net/"
     )
     

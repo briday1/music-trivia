@@ -12,6 +12,9 @@ Each bingo card features:
 - **Optional custom title** at the top (e.g., "Music Bingo Night")
 - **No B-I-N-G-O header** - clean, modern design
 - **FREE SPACE in the center** with either text or an uploaded logo
+- **Improved readability** with larger fonts (10pt for song titles, 12pt for FREE SPACE)
+- **Better space utilization** with reduced margins (0.25 inch on all sides)
+- **More complete song titles** shown (up to 50 characters before truncation)
 - **Card index in bottom corner** (e.g., "Card #1")
 - **5x5 grid** (configurable from 3x3 to 7x7)
 
@@ -31,14 +34,15 @@ You can upload a logo image to display in the FREE SPACE:
 
 ## Original HTML Preview Format
 
-For quick preview in the browser, cards are still shown in HTML format:
+For quick preview in the browser, cards are shown in HTML format with improved readability:
 
 ![Bingo Card HTML Preview](https://github.com/user-attachments/assets/84b00aa1-6f4e-45f7-9110-90577a3aed5e)
 
 **Card Features:**
 - Traditional B-I-N-G-O header with green background
+- **Larger fonts** (14px for songs, 16px for FREE SPACE) for better readability
 - 25 unique song positions (for 5x5 cards)
-- Song titles with artist names
+- Song titles with artist names (up to 50 characters shown)
 - Clear borders for easy reading
 - Print-ready format with automatic page breaks
 - Unique card number (#1, #2, etc.)
@@ -60,11 +64,17 @@ The PDF includes an operator reference sheet showing the complete game progressi
 - **Song Called**: The song that completed the winning pattern
 
 **How to Use:**
-1. Print all bingo cards and distribute to players
-2. Keep the operator reference sheet for yourself
-3. Call songs from the playlist in random order
-4. Watch for the predicted wins to occur
-5. Award prizes to 1st, 2nd, and 3rd place winners
+1. **Print the PDF** at 100% scale (no shrinking) on letter-size paper (8.5" x 11")
+2. Distribute cards to players
+3. Keep the operator reference sheet for yourself
+4. Call songs from the playlist in random order
+5. Watch for the predicted wins to occur
+6. Award prizes to 1st, 2nd, and 3rd place winners
+
+**Printing Tips:**
+- Cards use 0.25" margins which are safe for most printers
+- Print at 100% scale for optimal readability
+- Use your printer's "2 pages per sheet" or "4 pages per sheet" setting if you want multiple cards per physical page
 
 ## Game Flow Example
 
