@@ -7,7 +7,7 @@ import itertools
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage, PageBreak, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib import colors
@@ -975,19 +975,35 @@ def generate_bingo_pdf(
     Returns:
         BytesIO object containing the PDF
     """
+    # Configuration constants
+    CARDS_PER_PAGE = 4  # 2x2 grid layout
+    CARDS_PER_ROW = 2
+    CARDS_PER_COL = 2
+    PAGE_MARGIN = 0.25 * inch  # Reduced margins for more space
+    
     buffer = BytesIO()
-    # Reduced margins for more space
     doc = SimpleDocTemplate(buffer, pagesize=letter, 
-                           topMargin=0.25*inch, bottomMargin=0.25*inch,
-                           leftMargin=0.25*inch, rightMargin=0.25*inch)
+                           topMargin=PAGE_MARGIN, bottomMargin=PAGE_MARGIN,
+                           leftMargin=PAGE_MARGIN, rightMargin=PAGE_MARGIN)
     elements = []
     
     styles = getSampleStyleSheet()
     
+    # Calculate available space for cards
+    page_width, page_height = letter
+    available_width = page_width - (2 * PAGE_MARGIN)
+    available_height = page_height - (2 * PAGE_MARGIN)
+    
+    # Calculate dimensions for each card in the 2x2 grid
+    card_width = available_width / CARDS_PER_ROW
+    card_height = available_height / CARDS_PER_COL
+    
+    # Card table size (slightly smaller to allow for padding)
+    card_table_size = min(card_width, card_height) * 0.90  # 90% to allow spacing
+    
     # Helper function to create a single bingo card
     def create_single_card(card, card_idx):
-        """Create a single bingo card as a table with title and instructions."""
-        card_elements = []
+        """Create a single bingo card as a single flowable element (nested table)."""
         card_size = len(card)
         
         # Title style with reduced space
@@ -999,6 +1015,9 @@ def generate_bingo_pdf(
             spaceBefore=0,
             fontSize=9
         )
+        
+        # Build all card elements
+        card_elements = []
         
         # Add optional title at top (compact)
         if title:
@@ -1063,9 +1082,7 @@ def generate_bingo_pdf(
                     table_row.append(Paragraph(song_text, song_style))
             table_data.append(table_row)
         
-        # Create the table with appropriate sizing for 2x2 layout
-        # Available space per card: ~3.5" x 3.5" (accounting for margins and spacing)
-        card_table_size = 3.5*inch
+        # Create the table with sizing based on calculated card_table_size
         col_width = card_table_size / card_size
         
         bingo_table = Table(table_data, colWidths=[col_width] * card_size, 
@@ -1093,47 +1110,47 @@ def generate_bingo_pdf(
         )
         card_elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
         
-        # Return the card as a nested table cell
+        # Return all card elements as a simple list (to be wrapped by layout table)
         return card_elements
     
-    # Group cards into 2x2 grids (4 cards per page)
-    cards_per_page = 4
-    for page_start in range(0, len(cards), cards_per_page):
-        page_cards = cards[page_start:page_start + cards_per_page]
+    # Group cards into grids (CARDS_PER_PAGE cards per page)
+    for page_start in range(0, len(cards), CARDS_PER_PAGE):
+        page_cards = cards[page_start:page_start + CARDS_PER_PAGE]
         
         # Create 2x2 layout
         layout_data = []
-        for row in range(2):  # 2 rows
+        for row in range(CARDS_PER_ROW):
             layout_row = []
-            for col in range(2):  # 2 columns
-                card_idx = page_start + (row * 2 + col)
+            for col in range(CARDS_PER_COL):
+                card_idx = page_start + (row * CARDS_PER_COL + col)
                 if card_idx < len(cards):
-                    # Create nested table for this card
-                    card_content = create_single_card(cards[card_idx], card_idx)
-                    # Wrap in a table cell
-                    cell_table = Table([[elem] for elem in card_content])
-                    cell_table.setStyle(TableStyle([
+                    # Get card elements and wrap them in a single-column table
+                    card_elements = create_single_card(cards[card_idx], card_idx)
+                    # Create a container table for this card
+                    card_container = Table([[elem] for elem in card_elements])
+                    card_container.setStyle(TableStyle([
                         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
                     ]))
-                    layout_row.append(cell_table)
+                    layout_row.append(card_container)
                 else:
                     # Empty cell if we don't have enough cards
                     layout_row.append("")
             layout_data.append(layout_row)
         
-        # Create the 2x2 layout table
-        layout_table = Table(layout_data, colWidths=[3.75*inch, 3.75*inch],
-                            rowHeights=[5*inch, 5*inch])
+        # Create the layout table with calculated dimensions
+        layout_table = Table(layout_data, colWidths=[card_width] * CARDS_PER_COL,
+                            rowHeights=[card_height] * CARDS_PER_ROW)
         layout_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ]))
         
-        elements.append(layout_table)
+        # Wrap layout table in KeepTogether to prevent page breaks within the 2x2 grid
+        elements.append(KeepTogether(layout_table))
         
         # Page break after each page of cards (except the last)
-        if page_start + cards_per_page < len(cards):
+        if page_start + CARDS_PER_PAGE < len(cards):
             elements.append(PageBreak())
     
     # Add operator reference sheet
