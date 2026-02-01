@@ -1001,20 +1001,49 @@ def generate_bingo_pdf(
     # Card table size (slightly smaller to allow for padding)
     card_table_size = min(card_width, card_height) * 0.90  # 90% to allow spacing
     
+    # Define paragraph styles once (outside the loop for performance)
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading3'],
+        alignment=TA_CENTER,
+        spaceAfter=2,
+        spaceBefore=0,
+        fontSize=9
+    )
+    
+    song_style = ParagraphStyle(
+        'SongCell',
+        alignment=TA_CENTER,
+        fontSize=10,  # Increased from 7
+        leading=11,   # Tighter leading
+        spaceBefore=0,
+        spaceAfter=0
+    )
+    
+    free_space_style = ParagraphStyle(
+        'FreeSpace',
+        alignment=TA_CENTER,
+        fontSize=12,  # Increased from 8
+        leading=13,
+        fontName='Helvetica-Bold',
+        spaceBefore=0,
+        spaceAfter=0
+    )
+    
+    index_style = ParagraphStyle(
+        'CardIndex',
+        parent=styles['Normal'],
+        alignment=TA_CENTER,
+        fontSize=7,
+        textColor=colors.grey,
+        spaceAfter=0,
+        spaceBefore=1
+    )
+    
     # Helper function to create a single bingo card
     def create_single_card(card, card_idx):
         """Create a single bingo card as a single flowable element (nested table)."""
         card_size = len(card)
-        
-        # Title style with reduced space
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading3'],
-            alignment=TA_CENTER,
-            spaceAfter=2,
-            spaceBefore=0,
-            fontSize=9
-        )
         
         # Build all card elements
         card_elements = []
@@ -1025,27 +1054,6 @@ def generate_bingo_pdf(
         
         # Create table data (no BINGO header)
         table_data = []
-        
-        # Song cell style - increased font size and better wrapping
-        song_style = ParagraphStyle(
-            'SongCell',
-            alignment=TA_CENTER,
-            fontSize=10,  # Increased from 7
-            leading=11,   # Tighter leading
-            spaceBefore=0,
-            spaceAfter=0
-        )
-        
-        # Free space style - increased font size
-        free_space_style = ParagraphStyle(
-            'FreeSpace',
-            alignment=TA_CENTER,
-            fontSize=12,  # Increased from 8
-            leading=13,
-            fontName='Helvetica-Bold',
-            spaceBefore=0,
-            spaceAfter=0
-        )
         
         for row_idx, row in enumerate(card):
             table_row = []
@@ -1098,16 +1106,7 @@ def generate_bingo_pdf(
         
         card_elements.append(bingo_table)
         
-        # Add compact card index
-        index_style = ParagraphStyle(
-            'CardIndex',
-            parent=styles['Normal'],
-            alignment=TA_CENTER,
-            fontSize=7,
-            textColor=colors.grey,
-            spaceAfter=0,
-            spaceBefore=1
-        )
+        # Add compact card index (using pre-defined style)
         card_elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
         
         # Return all card elements as a simple list (to be wrapped by layout table)
