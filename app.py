@@ -998,8 +998,8 @@ def generate_bingo_pdf(
     card_width = available_width / CARDS_PER_ROW
     card_height = available_height / CARDS_PER_COL
     
-    # Card table size (slightly smaller to allow for padding)
-    card_table_size = min(card_width, card_height) * 0.90  # 90% to allow spacing
+    # Card table size (use 90% of available space to allow for inter-card spacing and padding)
+    card_table_size = min(card_width, card_height) * 0.90
     
     # Define paragraph styles once (outside the loop for performance)
     title_style = ParagraphStyle(
@@ -1042,7 +1042,11 @@ def generate_bingo_pdf(
     
     # Helper function to create a single bingo card
     def create_single_card(card, card_idx):
-        """Create a single bingo card as a single flowable element (nested table)."""
+        """Create a single bingo card.
+        
+        Returns:
+            List of flowable elements (title, bingo table, card index) that comprise one card.
+        """
         card_size = len(card)
         
         # Build all card elements
@@ -1118,10 +1122,10 @@ def generate_bingo_pdf(
         
         # Create 2x2 layout
         layout_data = []
-        for row in range(CARDS_PER_ROW):
+        for grid_row in range(CARDS_PER_ROW):
             layout_row = []
-            for col in range(CARDS_PER_COL):
-                card_idx = page_start + (row * CARDS_PER_COL + col)
+            for grid_col in range(CARDS_PER_COL):
+                card_idx = page_start + (grid_row * CARDS_PER_COL + grid_col)
                 if card_idx < len(cards):
                     # Get card elements and wrap them in a single-column table
                     card_elements = create_single_card(cards[card_idx], card_idx)
