@@ -1285,7 +1285,8 @@ def main():
                 
                 # Display song list
                 with st.expander(f"View all {len(songs)} songs"):
-                    st.write(", ".join(songs))
+                    songs_df = pd.DataFrame({"Song": songs})
+                    st.dataframe(songs_df, use_container_width=True, hide_index=True)
                 
                 # Generate bingo cards
                 with st.spinner(f"Generating {num_cards} unique bingo cards..."):
