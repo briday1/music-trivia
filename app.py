@@ -1171,12 +1171,16 @@ def generate_bingo_pdf(
     return buffer
 
 def main():
-    st.title("🎵 Music Bingo Game Generator")
+    st.title("Music Bingo Game Generator")
     st.write("Create unique bingo cards from your Spotify playlists!")
+    
+    # Initialize session state for persistent state
+    if 'generation_count' not in st.session_state:
+        st.session_state.generation_count = 0
     
     # Instructions for using Exportify
     st.info("""
-    ### 📋 How to Use This App:
+    ### How to Use This App:
     
     1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) to export your Spotify playlist(s) to CSV
     2. **Upload CSV**: Upload the exported CSV file below
@@ -1257,6 +1261,9 @@ def main():
     
     if uploaded_file:
         if st.button("Generate Bingo Cards", type="primary"):
+            st.session_state.generation_count += 1
+            random.seed(st.session_state.generation_count)
+            
             with st.spinner("Parsing CSV file..."):
                 songs = parse_csv_tracks(uploaded_file)
             
@@ -1273,7 +1280,7 @@ def main():
                         third_winner_round
                     )
                     if not is_valid:
-                        st.error(f"❌ Invalid round targets: {error_msg}")
+                        st.error(f"Invalid round targets: {error_msg}")
                         st.stop()
                 
                 # Display song list
@@ -1292,7 +1299,7 @@ def main():
                             third_winner_round
                         )
                         if cards is None:
-                            st.warning("⚠️ Could not generate cards that meet exact target rounds after 1000 attempts. Try adjusting target rounds or card size.")
+                            st.warning("Could not generate cards that meet exact target rounds after 1000 attempts. Try adjusting target rounds or card size.")
                             st.stop()
                     else:
                         cards = generate_unique_bingo_cards(songs, num_cards, card_size)
@@ -1335,17 +1342,9 @@ def main():
                         logo_zoom=logo_zoom
                     )
                 
-                st.download_button(
-                    label="📥 Download Complete PDF (Cards + Operator Sheet)",
-                    data=pdf_buffer,
-                    file_name="bingo_game_complete.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
-                
-                # Analyze wins
+                # Analyze wins and show results
                 if analyze_wins:
-                    st.header("📊 Win Analysis")
+                    st.header("Win Analysis")
                     
                     # Show summary statistics
                     col1, col2, col3 = st.columns(3)
@@ -1358,21 +1357,21 @@ def main():
                         if not first_place.empty:
                             card_num = first_place['Card Index'].values[0]
                             round_num = first_place['1 Line Round'].values[0]
-                            st.metric("🥇 1st Place (1 Line)", f"Card #{card_num}", 
+                            st.metric("1st Place (1 Line)", f"Card #{card_num}", 
                                      f"Round {round_num}")
                     
                     with col2:
                         if not second_place.empty:
                             card_num = second_place['Card Index'].values[0]
                             round_num = second_place['2 Lines Round'].values[0]
-                            st.metric("🥈 2nd Place (2 Lines)", f"Card #{card_num}", 
+                            st.metric("2nd Place (2 Lines)", f"Card #{card_num}", 
                                      f"Round {round_num}")
                     
                     with col3:
                         if not third_place.empty:
                             card_num = third_place['Card Index'].values[0]
                             round_num = third_place['Full Card Round'].values[0]
-                            st.metric("🥉 3rd Place (Full Card)", f"Card #{card_num}", 
+                            st.metric("3rd Place (Full Card)", f"Card #{card_num}", 
                                      f"Round {round_num}")
                     
                     # Operator table
@@ -1389,13 +1388,13 @@ def main():
                             return "-"
                         round_val = f"Round {int(value)}"
                         
-                        # Add emoji if this card won this milestone
+                        # Add marker if this card won this milestone
                         if col_name == '1 Line Round' and row['Won Place'] == 1:
-                            return f"🥇 {round_val}"
+                            return f"(Winner) {round_val}"
                         elif col_name == '2 Lines Round' and row['Won Place'] == 2:
-                            return f"🥈 {round_val}"
+                            return f"(Winner) {round_val}"
                         elif col_name == 'Full Card Round' and row['Won Place'] == 3:
-                            return f"🥉 {round_val}"
+                            return f"(Winner) {round_val}"
                         return round_val
                     
                     display_df['1 Line'] = display_df.apply(lambda r: format_cell(r, '1 Line Round'), axis=1)
@@ -1420,47 +1419,26 @@ def main():
                     # Download option for operator table
                     csv = results_df.to_csv(index=False)
                     st.download_button(
-                        label="📥 Download Operator Table (CSV)",
+                        label="Download Operator Table (CSV)",
                         data=csv,
                         file_name="bingo_operator_table.csv",
                         mime="text/csv"
                     )
                 
-                # Display bingo cards
-                st.header("🎴 Bingo Cards")
-                st.write("Preview and print your bingo cards below:")
-                
-                # Option to show all cards or paginate
-                display_option = st.radio(
-                    "Display Options",
-                    ["Show First 3 Cards", "Show All Cards", "Select Specific Card"]
+                # Show download button for PDF
+                st.divider()
+                st.download_button(
+                    label="Download Complete PDF (Cards + Operator Sheet)",
+                    data=pdf_buffer,
+                    file_name="bingo_game_complete.pdf",
+                    mime="application/pdf",
+                    type="primary"
                 )
-                
-                if display_option == "Show First 3 Cards":
-                    for i in range(min(3, len(cards))):
-                        st.markdown(format_bingo_card_html(cards[i], i), unsafe_allow_html=True)
-                
-                elif display_option == "Show All Cards":
-                    for i, card in enumerate(cards):
-                        st.markdown(format_bingo_card_html(card, i), unsafe_allow_html=True)
-                
-                else:  # Select Specific Card
-                    card_to_show = st.number_input(
-                        "Card Number",
-                        min_value=1,
-                        max_value=len(cards),
-                        value=1
-                    ) - 1
-                    st.markdown(format_bingo_card_html(cards[card_to_show], card_to_show), unsafe_allow_html=True)
-                
-                # Print instructions
-                st.info("💡 **Printing Tip**: Use your browser's Print function (Ctrl+P or Cmd+P) to print all bingo cards. "
-                       "Each card will automatically be on its own page.")
             else:
                 st.error("Could not parse songs from the CSV file. Please check the file format and try again.")
     
     # Instructions
-    with st.expander("ℹ️ How to Use"):
+    with st.expander("How to Use"):
         st.markdown("""
         ### Getting Started
         1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) and authorize with Spotify
@@ -1472,10 +1450,10 @@ def main():
         7. **Print**: Use your browser's print function to print the bingo cards
         
         ### Features
-        - 🎲 **Unique Cards**: Each bingo card is randomly generated with different songs
-        - 📊 **Win Analysis**: See which round each card will win (1st, 2nd, 3rd place)
-        - 🎯 **Operator Table**: Download a table showing the winning order for game management
-        - 🖨️ **Print Ready**: Cards are formatted for easy printing
+        - **Unique Cards**: Each bingo card is randomly generated with different songs
+        - **Win Analysis**: See which round each card will win (1st, 2nd, 3rd place)
+        - **Operator Table**: Download a table showing the winning order for game management
+        - **Print Ready**: Cards are formatted for easy printing
         
         ### Tips
         - Use playlists with at least 25 songs for 5x5 cards
