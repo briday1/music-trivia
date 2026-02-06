@@ -1375,8 +1375,19 @@ def main():
                             st.metric("3rd Place (Full Card)", f"Card #{card_num}", 
                                      f"Round {round_num}")
                     
-                    # Operator table
-                    st.subheader("Operator Control Table")
+                    # Show download button for PDF above the table
+                    st.divider()
+                    st.download_button(
+                        label="Download Complete PDF",
+                        data=pdf_buffer,
+                        file_name="bingo_game_complete.pdf",
+                        mime="application/pdf",
+                        type="primary"
+                    )
+                    st.divider()
+                    
+                    # Cheat sheet table
+                    st.subheader("Cheat Sheet")
                     st.info("This table shows when each card achieves milestones. Highlighted cells show winners.")
                     
                     # Format display DataFrame
@@ -1417,24 +1428,14 @@ def main():
                         hide_index=True
                     )
                     
-                    # Download option for operator table
+                    # Download option for operator table (CSV for reference)
                     csv = results_df.to_csv(index=False)
                     st.download_button(
-                        label="Download Operator Table (CSV)",
+                        label="Download Data (CSV)",
                         data=csv,
                         file_name="bingo_operator_table.csv",
                         mime="text/csv"
                     )
-                
-                # Show download button for PDF
-                st.divider()
-                st.download_button(
-                    label="Download Complete PDF (Cards + Operator Sheet)",
-                    data=pdf_buffer,
-                    file_name="bingo_game_complete.pdf",
-                    mime="application/pdf",
-                    type="primary"
-                )
             else:
                 st.error("Could not parse songs from the CSV file. Please check the file format and try again.")
     
@@ -1453,7 +1454,7 @@ def main():
         ### Features
         - **Unique Cards**: Each bingo card is randomly generated with different songs
         - **Win Analysis**: See which round each card will win (1st, 2nd, 3rd place)
-        - **Operator Table**: Download a table showing the winning order for game management
+        - **Cheat Sheet**: Download a table showing the winning order for game management
         - **Print Ready**: Cards are formatted for easy printing
         
         ### Tips
