@@ -1177,6 +1177,12 @@ def main():
     # Initialize session state for persistent state
     if 'generation_count' not in st.session_state:
         st.session_state.generation_count = 0
+    if 'expand_pdf_customization' not in st.session_state:
+        st.session_state.expand_pdf_customization = False
+    if 'expand_songs' not in st.session_state:
+        st.session_state.expand_songs = False
+    if 'expand_how_to_use' not in st.session_state:
+        st.session_state.expand_how_to_use = False
     
     # Instructions for using Exportify
     st.info("""
@@ -1246,7 +1252,10 @@ def main():
     
     # PDF Customization
     st.divider()
-    with st.expander("PDF Customization (Optional)"):
+    pdf_expander = st.expander("PDF Customization (Optional)", expanded=st.session_state.expand_pdf_customization)
+    with pdf_expander:
+        # Track if this section is expanded by checking interaction
+        st.session_state.expand_pdf_customization = True
         card_title = st.text_input("Card Title (optional)", placeholder="e.g., Music Bingo Night")
         
         col1, col2 = st.columns([2, 1])
@@ -1284,7 +1293,9 @@ def main():
                         st.stop()
                 
                 # Display song list
-                with st.expander(f"View all {len(songs)} songs"):
+                songs_expander = st.expander(f"View all {len(songs)} songs", expanded=st.session_state.expand_songs)
+                with songs_expander:
+                    st.session_state.expand_songs = True
                     songs_df = pd.DataFrame({"Song": songs})
                     st.dataframe(songs_df, use_container_width=True, hide_index=True)
                 
@@ -1382,7 +1393,8 @@ def main():
                         data=pdf_buffer,
                         file_name="bingo_game_complete.pdf",
                         mime="application/pdf",
-                        type="primary"
+                        type="primary",
+                        key=f"pdf_download_{st.session_state.generation_count}"
                     )
                     st.divider()
                     
@@ -1440,7 +1452,9 @@ def main():
                 st.error("Could not parse songs from the CSV file. Please check the file format and try again.")
     
     # Instructions
-    with st.expander("How to Use"):
+    how_to_expander = st.expander("How to Use", expanded=st.session_state.expand_how_to_use)
+    with how_to_expander:
+        st.session_state.expand_how_to_use = True
         st.markdown("""
         ### Getting Started
         1. **Export Your Playlist**: Visit [Exportify](https://exportify.net/) and authorize with Spotify
