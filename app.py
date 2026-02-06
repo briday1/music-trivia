@@ -991,7 +991,7 @@ def generate_bingo_pdf(
     index_style = ParagraphStyle(
         'CardIndex',
         parent=styles['Normal'],
-        alignment=TA_RIGHT,
+        alignment=TA_CENTER,
         fontSize=8,
         textColor=colors.grey
     )
@@ -1060,11 +1060,13 @@ def generate_bingo_pdf(
         ]))
         
         elements.append(table)
-        elements.append(Spacer(1, 0.1*inch))
+        elements.append(Spacer(1, 0.15*inch))
         
         # Add card index and game instructions at the bottom
-        elements.append(Paragraph(f"Card #{card_idx + 1}", index_style))
-        elements.append(Spacer(1, 0.1*inch))
+        # Card index is centered with TA_CENTER alignment
+        card_index_para = Paragraph(f"Card #{card_idx + 1}", index_style)
+        elements.append(card_index_para)
+        elements.append(Spacer(1, 0.05*inch))
         
         # Add minimal game instructions at the bottom
         instructions_style = ParagraphStyle(
@@ -1080,7 +1082,8 @@ def generate_bingo_pdf(
             "Third place winner: Fill sheet. "
             "Each card can only win once."
         )
-        elements.append(Paragraph(instructions_text, instructions_style))
+        instructions_para = Paragraph(instructions_text, instructions_style)
+        elements.append(instructions_para)
         
         # Page break after each card (except the last)
         if card_idx < len(cards) - 1:
@@ -1202,48 +1205,40 @@ def main():
     with col2:
         card_size = st.slider("Card Size (NxN)", min_value=3, max_value=7, value=5)
     
-    # Win Analysis section
+    # Win Analysis section - always enabled with round controls
     st.divider()
-    analyze_wins = st.checkbox("Analyze Win Probabilities", value=True)
+    st.subheader("Winner Round Settings")
+    st.caption("Set target rounds for each winner")
     
-    # Initialize round control variables
-    use_round_control = False
-    first_winner_round = None
-    second_winner_round = None
-    third_winner_round = None
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        first_winner_round = st.slider(
+            "1st Winner Round (1 line)",
+            min_value=1,
+            max_value=100,
+            value=10,
+            help="Minimum round for the first winner"
+        )
+    with col2:
+        second_winner_round = st.slider(
+            "2nd Winner Round (2 lines)",
+            min_value=first_winner_round + 1,
+            max_value=100,
+            value=min(20, first_winner_round + 10),
+            help="Minimum round for the second winner"
+        )
+    with col3:
+        third_winner_round = st.slider(
+            "3rd Winner Round (full card)",
+            min_value=second_winner_round + 1,
+            max_value=100,
+            value=min(30, second_winner_round + 10),
+            help="Minimum round for the third winner"
+        )
     
-    # Winner round controls
-    if analyze_wins:
-        with st.expander("Winner Round Controls (Optional)"):
-            st.caption("Set target rounds for each winner")
-            use_round_control = st.checkbox("Control Winner Rounds", value=False)
-            
-            if use_round_control:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    first_winner_round = st.slider(
-                        "1st Winner Round (1 line)",
-                        min_value=1,
-                        max_value=100,
-                        value=10,
-                        help="Minimum round for the first winner"
-                    )
-                with col2:
-                    second_winner_round = st.slider(
-                        "2nd Winner Round (2 lines)",
-                        min_value=first_winner_round + 1,
-                        max_value=100,
-                        value=min(20, first_winner_round + 10),
-                        help="Minimum round for the second winner"
-                    )
-                with col3:
-                    third_winner_round = st.slider(
-                        "3rd Winner Round (full card)",
-                        min_value=second_winner_round + 1,
-                        max_value=100,
-                        value=min(30, second_winner_round + 10),
-                        help="Minimum round for the third winner"
-                    )
+    # Always analyze wins and use round control
+    analyze_wins = True
+    use_round_control = True
     
     # PDF Customization
     st.divider()
