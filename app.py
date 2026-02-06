@@ -1354,8 +1354,14 @@ def main():
                         logo_zoom=logo_zoom
                     )
                 
+                # Store in session state to persist across reruns
+                st.session_state.cards = cards
+                st.session_state.results_df = results_df
+                st.session_state.pdf_buffer = pdf_buffer
+                
                 # Analyze wins and show results
-                if analyze_wins:
+                if analyze_wins and 'results_df' in st.session_state:
+                    results_df = st.session_state.results_df
                     st.header("Win Analysis")
                     
                     # Show summary statistics
@@ -1388,14 +1394,15 @@ def main():
                     
                     # Show download button for PDF above the table
                     st.divider()
-                    st.download_button(
-                        label="Download Complete PDF",
-                        data=pdf_buffer,
-                        file_name="bingo_game_complete.pdf",
-                        mime="application/pdf",
-                        type="primary",
-                        key=f"pdf_download_{st.session_state.generation_count}"
-                    )
+                    if 'pdf_buffer' in st.session_state:
+                        st.download_button(
+                            label="Download Complete PDF",
+                            data=st.session_state.pdf_buffer,
+                            file_name="bingo_game_complete.pdf",
+                            mime="application/pdf",
+                            type="primary",
+                            key=f"pdf_download_{st.session_state.generation_count}"
+                        )
                     st.divider()
                     
                     # Cheat sheet table
